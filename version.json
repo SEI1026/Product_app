@@ -1,0 +1,85 @@
+{
+  "version": "2.1.0",
+  "release_date": "2025-06-04",
+  "download_url": "https://github.com/SEI1026/Product_app/releases/download/v2.1.0/ProductRegisterTool-v2.1.0.zip",
+  "minimum_required_version": "2.0.0",
+  "_comment_download_url": "GitHubのReleases機能でアップロードしたZIPファイルのURLを指定。ZIPには商品登録ツール.exe を含める",
+  "_comment_github_url": "このversion.jsonはリポジトリのルートディレクトリに配置し、raw.githubusercontent.comでアクセス可能にする",
+  "changelog": {
+    "v2.1.0": {
+      "release_date": "2025-01-04",
+      "type": "minor",
+      "features": [
+        "リアルタイムデータ検証システムの実装",
+        "入力フィールドの即座エラー表示（赤枠線・ツールチップ）",
+        "商品コード・価格・必須フィールドの包括的検証",
+        "SKUデータとMainデータの整合性チェック",
+        "保存時の全項目検証とエラー一覧表示",
+        "文字数制限超過時の視覚的警告強化",
+        "メニューバーの追加（ショートカットキー表示）",
+        "自動保存インジケーターの改善（ツールチップベース）"
+      ],
+      "improvements": [
+        "UI/UXの大幅改善（レスポンシブデザイン対応）",
+        "エラーメッセージの分かりやすさ向上",
+        "データ品質チェック機能の強化",
+        "ユーザビリティの向上"
+      ],
+      "bug_fixes": [
+        "Python 3.13互換性の修正",
+        "データクラスのmutable defaultエラー解決",
+        "メタクラス競合問題の修正",
+        "missing importsの修正"
+      ],
+      "breaking_changes": []
+    },
+    "v2.0.0": {
+      "release_date": "2024-12-15",
+      "type": "major", 
+      "features": [
+        "ダークモード対応の実装",
+        "設定の永続化機能",
+        "キーボードショートカット拡充",
+        "自動保存機能の追加",
+        "フォーカス・タブオーダーの最適化"
+      ],
+      "improvements": [
+        "フォント・配色の改善",
+        "レスポンシブレイアウト対応",
+        "パフォーマンスの向上"
+      ],
+      "bug_fixes": [
+        "レイアウト崩れの修正",
+        "メモリリークの解決"
+      ]
+    }
+  },
+  "system_requirements": {
+    "python_version": "3.8+",
+    "supported_os": ["Windows 10/11", "macOS 10.15+", "Ubuntu 18.04+"],
+    "dependencies": [
+      "PyQt5>=5.15.0",
+      "openpyxl>=3.0.0"
+    ]
+  },
+  "download_info": {
+    "file_size": "~25MB",
+    "install_type": "portable",
+    "includes": [
+      "実行ファイル (商品登録ツール.exe)",
+      "テンプレートファイル (item_template.xlsm)",
+      "設定ファイル",
+      "説明書 (README.md)"
+    ]
+  },
+  "update_check": {
+    "check_url": "https://api.github.com/repos/your-username/商品登録入力ツール/releases/latest",
+    "auto_check": true,
+    "check_interval_days": 7
+  },
+  "support": {
+    "documentation": "https://github.com/your-username/商品登録入力ツール/wiki",
+    "issues": "https://github.com/your-username/商品登録入力ツール/issues",
+    "discussions": "https://github.com/your-username/商品登録入力ツール/discussions"
+  }
+}
