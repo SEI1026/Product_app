@@ -1,0 +1,20 @@
+# 商品登録入力ツール 依存パッケージ
+# pip install -r requirements.txt
+
+# GUI フレームワーク
+PyQt5>=5.15.0
+
+# Excel ファイル操作
+openpyxl>=3.0.0
+
+# ビルドツール（開発環境のみ）
+pyinstaller>=5.0.0
+
+# 万が一対策システム用依存関係
+psutil>=5.8.0          # メモリ・ディスク・システム情報監視
+requests>=2.25.0       # ネットワーク監視・自動更新
+packaging>=20.0        # バージョン比較・システム互換性チェック
+
+# オプション：型チェック（開発環境のみ）
+# mypy>=0.950
+# types-openpyxl
