@@ -1,13 +1,51 @@
 {
     "version":  "2.2.0",
-    "release_date":  "2025-06-04",
+    "release_date":  "2025-06-05",
     "download_url":  "https://github.com/SEI1026/Product_app/releases/download/v2.2.0/ProductRegisterTool-v2.2.0.zip",
     "minimum_required_version":  "2.0.0",
     "_comment_download_url":  "GitHub Releases URL for auto-update",
     "_comment_company":  "Product Registration Tool by Daihokagu",
     "changelog":  {
-                      "v2.1.6":  {
+                      "v2.2.0":  {
                                      "release_date":  "2025-06-04",
+                                     "type":  "minor",
+                                     "features":  [
+                                                      "Real-time data validation system",
+                                                      "Instant error display for input fields",
+                                                      "Product code, price, and required field validation",
+                                                      "Auto-save indicator"
+                                                  ],
+                                     "improvements":  [
+                                                          "Major UI/UX improvements",
+                                                          "Enhanced error messages",
+                                                          "Strengthened data quality checks"
+                                                      ],
+                                     "bug_fixes":  [
+                                                       "Python 3.13 compatibility fixes",
+                                                       "Character encoding issues resolved"
+                                                   ]
+                                 },
+                      "v2.1.9":  {
+                                     "release_date":  "2025-06-04",
+                                     "type":  "patch",
+                                     "features":  [
+                                                      "Fixed build script references",
+                                                      "Consolidated batch files",
+                                                      "Cleaned up project structure"
+                                                  ],
+                                     "improvements":  [
+                                                          "Removed duplicate files",
+                                                          "Fixed constants.py module references",
+                                                          "Simplified auto-update code"
+                                                      ],
+                                     "bug_fixes":  [
+                                                       "Fixed spec file path errors",
+                                                       "Resolved version management issues",
+                                                       "Fixed icon file encoding"
+                                                   ]
+                                 },
+                      "v2.1.8":  {
+                                     "release_date":  "2025-06-03",
                                      "type":  "patch",
                                      "features":  [
                                                       "Complete automation system",
