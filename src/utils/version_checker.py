@@ -10,6 +10,8 @@ import subprocess
 import tempfile
 import zipfile
 import shutil
+import urllib.error
+import webbrowser
 from typing import Optional, Dict, Any, Tuple
 from urllib.request import urlopen, Request
 from urllib.error import URLError, HTTPError
@@ -77,6 +79,7 @@ class UpdateDownloader(QThread):
         """更新ファイルをダウンロードして展開"""
         try:
             if self._cancelled:
+                logging.info("ダウンロード開始前にキャンセルされました")
                 return
                 
             # 一時ファイル作成
@@ -92,9 +95,10 @@ class UpdateDownloader(QThread):
                 
             # ダウンロード
             self.status.emit("更新ファイルをダウンロード中...")
-            self._download_file()
+            success = self._download_file()
             
-            if self._cancelled:
+            if not success or self._cancelled:
+                logging.info("ダウンロードがキャンセルまたは失敗しました")
                 return
                 
             # 展開
@@ -102,47 +106,102 @@ class UpdateDownloader(QThread):
             self.extract_dir = self._extract_zip()
             
             if self._cancelled:
+                logging.info("展開後にキャンセルされました") 
                 return
                 
             # ファイル更新
             self.status.emit("ファイルを更新中...")
             self._update_files(self.extract_dir, self.target_dir)
             
-            self.finished.emit(True, "更新が正常に完了しました")
+            if not self._cancelled:
+                self.finished.emit(True, "更新が正常に完了しました")
             
+        except urllib.error.URLError as e:
+            error_msg = f"ネットワークエラー: {e}"
+            logging.error(error_msg)
+            self.finished.emit(False, error_msg)
+        except zipfile.BadZipFile as e:
+            error_msg = f"ZIPファイルエラー: {e}"
+            logging.error(error_msg) 
+            self.finished.emit(False, error_msg)
+        except PermissionError as e:
+            error_msg = f"ファイルアクセスエラー: {e}"
+            logging.error(error_msg)
+            self.finished.emit(False, error_msg)
         except Exception as e:
-            error_msg = str(e)
-            logging.error(f"更新エラー: {error_msg}")
-            self.finished.emit(False, f"更新に失敗しました: {error_msg}")
+            error_msg = f"予期しないエラー: {e}"
+            logging.error(f"更新エラー: {error_msg}", exc_info=True)
+            self.finished.emit(False, error_msg)
             
         finally:
             self._cleanup()
     
     def _download_file(self):
         """ファイルダウンロード処理"""
-        req = Request(self.download_url, headers={
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-        })
+        response = None
+        file_handle = None
         
-        with urlopen(req, timeout=30) as response:
+        try:
+            req = Request(self.download_url, headers={
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            })
+            
+            response = urlopen(req, timeout=30)
+            
             if response.getcode() != 200:
                 raise Exception(f"HTTPエラー: {response.getcode()}")
             
             total_size = int(response.headers.get('Content-Length', 0))
             downloaded = 0
             
-            with open(self.temp_file, 'wb') as f:
-                while not self._cancelled:
+            file_handle = open(self.temp_file, 'wb')
+            
+            while not self._cancelled:
+                try:
                     chunk = response.read(8192)
                     if not chunk:
                         break
                         
-                    f.write(chunk)
+                    file_handle.write(chunk)
                     downloaded += len(chunk)
                     
                     if total_size > 0:
                         progress = min(int((downloaded / total_size) * 100), 100)
                         self.progress.emit(progress)
+                        
+                except Exception as e:
+                    logging.error(f"チャンク読み込みエラー: {e}")
+                    raise
+                    
+            # キャンセルされた場合
+            if self._cancelled:
+                logging.info("ダウンロードがキャンセルされました")
+                return False
+                
+            # ダウンロード完了確認
+            if total_size > 0 and downloaded < total_size:
+                raise Exception(f"ダウンロード不完全: {downloaded}/{total_size} bytes")
+                
+            logging.info(f"ダウンロード完了: {downloaded} bytes")
+            return True
+            
+        except Exception as e:
+            logging.error(f"ダウンロードエラー: {e}")
+            raise
+            
+        finally:
+            # リソースの確実なクリーンアップ
+            if file_handle:
+                try:
+                    file_handle.close()
+                except Exception as e:
+                    logging.warning(f"ファイルクローズエラー: {e}")
+                    
+            if response:
+                try:
+                    response.close()
+                except Exception as e:
+                    logging.warning(f"レスポンスクローズエラー: {e}")
     
     def _extract_zip(self):
         """ZIPファイルの展開"""
@@ -180,8 +239,15 @@ class UpdateDownloader(QThread):
     
     def terminate(self):
         """ダウンロードをキャンセル"""
+        logging.info("アップデートダウンロードのキャンセルが要求されました")
         self._cancelled = True
-        super().terminate()
+        
+        # スレッドの安全な終了を待つ
+        if self.isRunning():
+            # 最大5秒待つ
+            if not self.wait(5000):
+                logging.warning("ダウンロードスレッドが5秒以内に終了しませんでした")
+                # 強制終了は避ける（危険なため）
     
     def _update_files(self, source_dir: str, target_dir: str):
         """ファイルを更新（実行中のファイルは.newとして保存、ユーザーデータは保護）"""
@@ -480,47 +546,66 @@ class VersionChecker:
                 # ダウンロード用スレッドを作成
                 downloader = UpdateDownloader(version_info.download_url, app_dir)
                 
-                # シグナル接続
-                downloader.progress.connect(progress.setValue)
-                downloader.status.connect(progress.setLabelText)
-                
                 # 完了時の処理
                 def on_finished(success: bool, message: str):
-                    progress.close()
-                    
-                    if success:
-                        # 更新成功
-                        reply = QMessageBox.question(
-                            self.parent,
-                            "更新完了",
-                            f"{message}\n\n今すぐアプリケーションを再起動しますか？",
-                            QMessageBox.Yes | QMessageBox.No,
-                            QMessageBox.Yes
-                        )
+                    try:
+                        if progress and not progress.wasCanceled():
+                            progress.close()
                         
-                        if reply == QMessageBox.Yes:
-                            try:
-                                self._create_restart_script()
-                            except Exception as e:
-                                logging.error(f"再起動エラー: {e}")
-                                QMessageBox.warning(
-                                    self.parent,
-                                    "再起動エラー",
-                                    "手動でアプリケーションを再起動してください。"
-                                )
-                        else:
-                            QMessageBox.information(
+                        if success and not downloader._cancelled:
+                            # 更新成功
+                            reply = QMessageBox.question(
                                 self.parent,
-                                "更新予定",
-                                "更新は次回起動時に適用されます。"
+                                "更新完了",
+                                f"{message}\n\n今すぐアプリケーションを再起動しますか？",
+                                QMessageBox.Yes | QMessageBox.No,
+                                QMessageBox.Yes
                             )
-                    else:
-                        # 更新失敗
-                        QMessageBox.critical(self.parent, "更新エラー", message)
+                            
+                            if reply == QMessageBox.Yes:
+                                try:
+                                    self._create_restart_script()
+                                except Exception as e:
+                                    logging.error(f"再起動エラー: {e}")
+                                    QMessageBox.warning(
+                                        self.parent,
+                                        "再起動エラー",
+                                        "手動でアプリケーションを再起動してください。"
+                                    )
+                            else:
+                                QMessageBox.information(
+                                    self.parent,
+                                    "更新予定",
+                                    "更新は次回起動時に適用されます。"
+                                )
+                        elif not downloader._cancelled:
+                            # 更新失敗（キャンセルでない場合のみエラー表示）
+                            QMessageBox.critical(self.parent, "更新エラー", message)
+                            
+                    except Exception as e:
+                        logging.error(f"更新完了処理エラー: {e}")
                 
-                # シグナル接続
-                downloader.finished.connect(on_finished)
-                progress.canceled.connect(downloader.terminate)
+                def on_cancel():
+                    """キャンセル処理"""
+                    try:
+                        downloader.terminate()
+                        if progress:
+                            progress.close()
+                        logging.info("ユーザーがアップデートをキャンセルしました")
+                    except Exception as e:
+                        logging.error(f"キャンセル処理エラー: {e}")
+                
+                # シグナル接続（エラーハンドリング付き）
+                try:
+                    downloader.progress.connect(progress.setValue)
+                    downloader.status.connect(progress.setLabelText)
+                    downloader.finished.connect(on_finished)
+                    progress.canceled.connect(on_cancel)
+                except Exception as e:
+                    logging.error(f"シグナル接続エラー: {e}")
+                    progress.close()
+                    QMessageBox.critical(self.parent, "更新エラー", "更新処理の初期化に失敗しました")
+                    return
                 
                 # ダウンロード開始
                 downloader.start()
