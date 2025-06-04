@@ -79,39 +79,68 @@ class UpdateDownloader(QThread):
             self.temp_file = os.path.join(temp_dir, f'update_{os.getpid()}.zip')
             
             logging.info(f"一時ファイルパス: {self.temp_file}")
+            logging.info(f"ダウンロードURL: {self.download_url}")
                 
             self.status.emit("更新ファイルをダウンロード中...")
             
             # ダウンロード
             req = Request(self.download_url, headers={'User-Agent': 'Mozilla/5.0'})
-            with urlopen(req) as response:
-                total_size = int(response.headers.get('Content-Length', 0))
-                downloaded = 0
-                
-                with open(self.temp_file, 'wb') as f:
-                    while True:
-                        chunk = response.read(8192)
-                        if not chunk:
-                            break
-                        f.write(chunk)
-                        downloaded += len(chunk)
-                        if total_size > 0:
-                            progress = int((downloaded / total_size) * 100)
-                            self.progress.emit(progress)
+            try:
+                with urlopen(req) as response:
+                    # HTTPステータスコードをチェック
+                    if response.getcode() != 200:
+                        raise Exception(f"HTTPエラー: {response.getcode()} - ダウンロードファイルが見つかりません")
+                    
+                    total_size = int(response.headers.get('Content-Length', 0))
+                    downloaded = 0
+                    logging.info(f"ダウンロードサイズ: {total_size} bytes")
+                    
+                    with open(self.temp_file, 'wb') as f:
+                        while True:
+                            chunk = response.read(8192)
+                            if not chunk:
+                                break
+                            f.write(chunk)
+                            downloaded += len(chunk)
+                            if total_size > 0:
+                                progress = int((downloaded / total_size) * 100)
+                                self.progress.emit(progress)
+                                
+            except HTTPError as e:
+                raise Exception(f"HTTPエラー {e.code}: ダウンロードファイルが見つかりません。\nURL: {self.download_url}")
+            except URLError as e:
+                raise Exception(f"ネットワークエラー: {e.reason}")
+            except Exception as download_e:
+                raise Exception(f"ダウンロードエラー: {str(download_e)}")
             
             self.status.emit("更新ファイルを展開中...")
             
+            # ZIPファイルの存在確認
+            if not os.path.exists(self.temp_file):
+                raise Exception("ダウンロードしたファイルが見つかりません")
+                
+            # ZIPファイルのサイズ確認
+            file_size = os.path.getsize(self.temp_file)
+            if file_size < 1000:  # 1KB未満の場合は無効なファイル
+                raise Exception(f"ダウンロードしたファイルが不完全です（サイズ: {file_size} bytes）")
+            
             # ZIPファイルを展開
-            with zipfile.ZipFile(self.temp_file, 'r') as zip_ref:
-                # 一時ディレクトリに展開
-                extract_dir = tempfile.mkdtemp()
-                zip_ref.extractall(extract_dir)
-                
-                # 更新ファイルをターゲットディレクトリにコピー
-                self._update_files(extract_dir, self.target_dir)
-                
-                # 一時ディレクトリを削除
-                shutil.rmtree(extract_dir)
+            try:
+                with zipfile.ZipFile(self.temp_file, 'r') as zip_ref:
+                    # 一時ディレクトリに展開
+                    extract_dir = tempfile.mkdtemp()
+                    logging.info(f"展開先ディレクトリ: {extract_dir}")
+                    zip_ref.extractall(extract_dir)
+                    
+                    # 更新ファイルをターゲットディレクトリにコピー
+                    self._update_files(extract_dir, self.target_dir)
+                    
+                    # 一時ディレクトリを削除
+                    shutil.rmtree(extract_dir)
+            except zipfile.BadZipFile:
+                raise Exception("ダウンロードしたファイルが有効なZIPファイルではありません")
+            except Exception as extract_e:
+                raise Exception(f"ファイル展開エラー: {str(extract_e)}")
             
             self.finished.emit(True, "更新が正常に完了しました")
             
@@ -411,6 +440,16 @@ class VersionChecker:
                 return
             else:
                 # 自動ダウンロード（新機能）
+                # ダウンロードURL検証
+                if not version_info.download_url or not version_info.download_url.startswith('https://'):
+                    progress.close()
+                    QMessageBox.critical(
+                        self.parent,
+                        "更新エラー",
+                        "無効なダウンロードURLです。手動ダウンロードをお試しください。"
+                    )
+                    return
+                
                 # ダウンロード用スレッドを作成
                 downloader = UpdateDownloader(version_info.download_url, app_dir)
                 
