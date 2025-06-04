@@ -75,6 +75,8 @@ class UpdateDownloader(QThread):
         self._cancelled = False
         self.extract_dir = None
         
+        logging.info(f"UpdateDownloader初期化: URL={download_url}, ターゲット={target_dir}")
+        
     def run(self):
         """更新ファイルをダウンロードして展開"""
         try:
@@ -223,10 +225,14 @@ class UpdateDownloader(QThread):
     
     def _cleanup(self):
         """クリーンアップ処理"""
+        logging.info("アップデートクリーンアップ開始")
+        
         # 一時ファイルを削除
         if self.temp_file and os.path.exists(self.temp_file):
             try:
+                file_size = os.path.getsize(self.temp_file)
                 os.unlink(self.temp_file)
+                logging.info(f"一時ファイル削除完了: {self.temp_file} ({file_size} bytes)")
             except Exception as e:
                 logging.warning(f"一時ファイル削除エラー: {e}")
         
@@ -234,8 +240,38 @@ class UpdateDownloader(QThread):
         if self.extract_dir and os.path.exists(self.extract_dir):
             try:
                 shutil.rmtree(self.extract_dir)
+                logging.info(f"展開ディレクトリ削除完了: {self.extract_dir}")
             except Exception as e:
                 logging.warning(f"展開ディレクトリ削除エラー: {e}")
+                
+        # キャンセル時の中途半端なファイルをクリーンアップ
+        if self._cancelled and hasattr(self, 'target_dir'):
+            try:
+                self._cleanup_partial_files()
+            except Exception as e:
+                logging.warning(f"部分ファイルクリーンアップエラー: {e}")
+                
+        logging.info("アップデートクリーンアップ完了")
+    
+    def _cleanup_partial_files(self):
+        """中途半端なファイル（.newファイルなど）をクリーンアップ"""
+        if not hasattr(self, 'target_dir') or not self.target_dir:
+            return
+            
+        try:
+            # .newファイルを検索して削除
+            import glob
+            new_files = glob.glob(os.path.join(self.target_dir, "*.new"))
+            for new_file in new_files:
+                try:
+                    file_size = os.path.getsize(new_file)
+                    os.remove(new_file)
+                    logging.info(f"中途半端な.newファイルを削除: {new_file} ({file_size} bytes)")
+                except Exception as e:
+                    logging.warning(f".newファイル削除エラー {new_file}: {e}")
+                    
+        except Exception as e:
+            logging.error(f"部分ファイルクリーンアップエラー: {e}")
     
     def terminate(self):
         """ダウンロードをキャンセル"""
@@ -251,88 +287,180 @@ class UpdateDownloader(QThread):
     
     def _update_files(self, source_dir: str, target_dir: str):
         """ファイルを更新（実行中のファイルは.newとして保存、ユーザーデータは保護）"""
-        current_exe = os.path.abspath(sys.executable)
-        current_exe_name = os.path.basename(current_exe)
-        updated_exe = False
-        
-        # ユーザーデータファイル（保護対象）のパターン
-        protected_patterns = [
-            'item_manage.xlsm',  # ユーザーの商品管理ファイル
-            '*_user_*',          # ユーザー作成ファイル
-            '*.backup',          # バックアップファイル  
-            'user_settings.json', # ユーザー設定
-            'config.ini',        # 設定ファイル
-        ]
-        
-        # ユーザーデータのバックアップを作成
-        backup_created = self._create_user_data_backup(target_dir)
-        if backup_created:
-            self.status.emit("ユーザーデータのバックアップを作成しました")
-        
-        # 展開されたファイルを探す
-        for root, dirs, files in os.walk(source_dir):
-            rel_path = os.path.relpath(root, source_dir)
-            target_root = os.path.join(target_dir, rel_path) if rel_path != '.' else target_dir
+        try:
+            current_exe = os.path.abspath(sys.executable)
+            current_exe_name = os.path.basename(current_exe)
+            updated_exe = False
             
-            # ディレクトリを作成
-            if not os.path.exists(target_root):
-                os.makedirs(target_root, exist_ok=True)
+            logging.info(f"ファイル更新開始: {source_dir} -> {target_dir}")
             
-            for file in files:
-                source_file = os.path.join(root, file)
-                target_file = os.path.join(target_root, file)
+            # ユーザーデータファイル（保護対象）のパターン
+            protected_patterns = [
+                'item_manage.xlsm',  # ユーザーの商品管理ファイル
+                '*_user_*',          # ユーザー作成ファイル
+                '*.backup',          # バックアップファイル  
+                'user_settings.json', # ユーザー設定
+                'config.ini',        # 設定ファイル
+            ]
+            
+            # ユーザーデータのバックアップを作成
+            try:
+                backup_created = self._create_user_data_backup(target_dir)
+                if backup_created:
+                    self.status.emit("ユーザーデータのバックアップを作成しました")
+                    logging.info("ユーザーデータバックアップ作成完了")
+            except Exception as e:
+                logging.error(f"ユーザーデータバックアップ作成エラー: {e}")
+                # バックアップ失敗は続行可能
+        
+            # 展開されたファイルを探す
+            file_count = 0
+            for root, dirs, files in os.walk(source_dir):
+                if self._cancelled:
+                    logging.info("ファイル更新中にキャンセルされました")
+                    return
+                    
+                rel_path = os.path.relpath(root, source_dir)
+                target_root = os.path.join(target_dir, rel_path) if rel_path != '.' else target_dir
                 
-                # ユーザーデータファイルの保護チェック
-                if self._is_user_data_file(file, rel_path, protected_patterns):
-                    # 既存のユーザーデータファイルがある場合は保護
-                    if os.path.exists(target_file):
-                        self.status.emit(f"ユーザーデータを保護: {file}")
-                        logging.info(f"ユーザーデータファイルを保護: {target_file}")
-                        continue  # このファイルはスキップ
-                
-                # PyInstallerでビルドされたexeファイルの更新
-                if getattr(sys, 'frozen', False):
-                    # 実行ファイル名と一致する場合（商品登録ツール.exe など）
-                    if file.lower() == current_exe_name.lower() or file.lower().endswith('.exe'):
-                        # 実行中のexeファイルは.newとして保存
-                        target_file = current_exe + '.new'
-                        updated_exe = True
-                        self.status.emit(f"実行ファイルを更新中: {file}")
-                else:
-                    # 開発環境の場合、実行中のスクリプトと同じ場合
-                    if os.path.abspath(target_file) == current_exe:
-                        target_file = target_file + '.new'
-                        updated_exe = True
-                
-                # ファイルをコピー
+                # ディレクトリを作成
                 try:
-                    shutil.copy2(source_file, target_file)
-                    logging.info(f"更新ファイルをコピー: {source_file} -> {target_file}")
+                    if not os.path.exists(target_root):
+                        os.makedirs(target_root, exist_ok=True)
+                        logging.debug(f"ディレクトリ作成: {target_root}")
                 except Exception as e:
-                    logging.error(f"ファイルコピーエラー: {e}")
+                    logging.error(f"ディレクトリ作成エラー {target_root}: {e}")
                     raise
+                
+                for file in files:
+                    if self._cancelled:
+                        logging.info("ファイルコピー中にキャンセルされました")
+                        return
+                        
+                    try:
+                        source_file = os.path.join(root, file)
+                        target_file = os.path.join(target_root, file)
+                        file_count += 1
+                        
+                        logging.debug(f"処理中のファイル[{file_count}]: {file}")
+                        
+                        # ユーザーデータファイルの保護チェック
+                        if self._is_user_data_file(file, rel_path, protected_patterns):
+                            # 既存のユーザーデータファイルがある場合は保護
+                            if os.path.exists(target_file):
+                                self.status.emit(f"ユーザーデータを保護: {file}")
+                                logging.info(f"ユーザーデータファイルを保護: {target_file}")
+                                continue  # このファイルはスキップ
+                    
+                    except Exception as e:
+                        logging.error(f"ファイル処理エラー {file}: {e}")
+                        # 個別ファイルエラーは続行
+                
+                        # PyInstallerでビルドされたexeファイルの更新
+                        if getattr(sys, 'frozen', False):
+                            # 実行ファイル名と一致する場合（商品登録ツール.exe など）
+                            if file.lower() == current_exe_name.lower() or file.lower().endswith('.exe'):
+                                # 実行中のexeファイルは.newとして保存
+                                target_file = current_exe + '.new'
+                                updated_exe = True
+                                self.status.emit(f"実行ファイルを更新中: {file}")
+                                logging.info(f"実行ファイル更新: {file} -> {target_file}")
+                        else:
+                            # 開発環境の場合、実行中のスクリプトと同じ場合
+                            if os.path.abspath(target_file) == current_exe:
+                                target_file = target_file + '.new'
+                                updated_exe = True
+                                logging.info(f"開発環境ファイル更新: {file}")
+                        
+                        # ファイルをコピー
+                        try:
+                            # ファイルサイズ確認
+                            source_size = os.path.getsize(source_file)
+                            if source_size == 0:
+                                logging.warning(f"ソースファイルのサイズが0: {source_file}")
+                            
+                            # 大きなファイルの場合は進捗表示
+                            if source_size > 1024 * 1024:  # 1MB以上
+                                self.status.emit(f"大きなファイルをコピー中: {file} ({source_size/1024/1024:.1f}MB)")
+                                logging.info(f"大きなファイルのコピー開始: {file} ({source_size} bytes)")
+                            
+                            # キャンセルチェック
+                            if self._cancelled:
+                                logging.info(f"ファイルコピー前にキャンセル: {file}")
+                                return
+                            
+                            # ファイルコピー実行
+                            shutil.copy2(source_file, target_file)
+                            
+                            # キャンセルチェック（コピー後）
+                            if self._cancelled:
+                                logging.info(f"ファイルコピー後にキャンセル: {file}")
+                                # 中途半端なファイルを削除
+                                if os.path.exists(target_file):
+                                    try:
+                                        os.remove(target_file)
+                                        logging.info(f"中途半端なファイルを削除: {target_file}")
+                                    except Exception as e:
+                                        logging.warning(f"中途半端ファイル削除エラー: {e}")
+                                return
+                            
+                            # コピー後のサイズ確認
+                            if os.path.exists(target_file):
+                                target_size = os.path.getsize(target_file)
+                                if source_size != target_size:
+                                    logging.error(f"ファイルサイズ不一致: {file} - 期待値:{source_size} 実際:{target_size}")
+                                    raise Exception(f"ファイルサイズ不一致: {source_size} != {target_size}")
+                                    
+                                logging.info(f"ファイルコピー完了: {file} ({source_size} bytes)")
+                            else:
+                                raise Exception(f"コピー後にファイルが存在しません: {target_file}")
+                            
+                        except Exception as e:
+                            logging.error(f"ファイルコピーエラー {file}: {e}")
+                            # 失敗したファイルがあれば削除
+                            if os.path.exists(target_file):
+                                try:
+                                    os.remove(target_file)
+                                    logging.info(f"失敗したファイルを削除: {target_file}")
+                                except Exception as cleanup_e:
+                                    logging.warning(f"失敗ファイル削除エラー: {cleanup_e}")
+                            raise
         
-        if not updated_exe and getattr(sys, 'frozen', False):
-            # exeファイルが見つからなかった場合の警告
-            logging.warning("更新パッケージ内に実行ファイルが見つかりませんでした")
+            logging.info(f"ファイル更新完了: {file_count}個のファイルを処理")
+            
+            if not updated_exe and getattr(sys, 'frozen', False):
+                # exeファイルが見つからなかった場合の警告
+                logging.warning("更新パッケージ内に実行ファイルが見つかりませんでした")
+                
+        except Exception as e:
+            logging.error(f"ファイル更新エラー: {e}")
+            raise
     
     def _is_user_data_file(self, filename: str, rel_path: str, protected_patterns: list) -> bool:
         """ファイルがユーザーデータかどうかを判定"""
-        import fnmatch
-        
-        # ファイル名パターンマッチング
-        for pattern in protected_patterns:
-            if fnmatch.fnmatch(filename.lower(), pattern.lower()):
-                return True
-        
-        # 特定のディレクトリ内のファイル（C#ツール内など）
-        if 'C#' in rel_path and filename.endswith('.xlsm'):
-            return True
+        try:
+            import fnmatch
             
-        # ファイルサイズ・更新日時による判定（テンプレートより大きい場合はユーザーデータの可能性）
-        # item_manage.xlsmがitem_template.xlsmより大きい場合など
-        
-        return False
+            # ファイル名パターンマッチング
+            for pattern in protected_patterns:
+                if fnmatch.fnmatch(filename.lower(), pattern.lower()):
+                    logging.debug(f"ユーザーデータファイル検出（パターン）: {filename}")
+                    return True
+            
+            # 特定のディレクトリ内のファイル（C#ツール内など）
+            if 'C#' in rel_path and filename.endswith('.xlsm'):
+                logging.debug(f"ユーザーデータファイル検出（C#ディレクトリ）: {filename}")
+                return True
+                
+            # ファイルサイズ・更新日時による判定（テンプレートより大きい場合はユーザーデータの可能性）
+            # item_manage.xlsmがitem_template.xlsmより大きい場合など
+            
+            return False
+            
+        except Exception as e:
+            logging.error(f"ユーザーデータファイル判定エラー {filename}: {e}")
+            # エラーの場合は保護対象として扱う（安全側に倒す）
+            return True
     
     def _create_user_data_backup(self, target_dir: str) -> bool:
         """重要なユーザーデータのバックアップを作成"""
@@ -350,16 +478,30 @@ class UpdateDownloader(QThread):
             
             backup_created = False
             for filename in important_files:
-                source_file = os.path.join(target_dir, filename)
-                if os.path.exists(source_file):
-                    if not os.path.exists(backup_dir):
-                        os.makedirs(backup_dir, exist_ok=True)
+                if self._cancelled:
+                    logging.info("バックアップ作成中にキャンセルされました")
+                    return backup_created
                     
-                    backup_file = os.path.join(backup_dir, filename)
-                    shutil.copy2(source_file, backup_file)
-                    backup_created = True
-                    logging.info(f"バックアップ作成: {source_file} -> {backup_file}")
+                try:
+                    source_file = os.path.join(target_dir, filename)
+                    if os.path.exists(source_file):
+                        if not os.path.exists(backup_dir):
+                            os.makedirs(backup_dir, exist_ok=True)
+                            logging.info(f"バックアップディレクトリ作成: {backup_dir}")
+                        
+                        backup_file = os.path.join(backup_dir, filename)
+                        shutil.copy2(source_file, backup_file)
+                        backup_created = True
+                        logging.info(f"バックアップ作成: {source_file} -> {backup_file}")
+                except Exception as e:
+                    logging.error(f"個別ファイルバックアップエラー {filename}: {e}")
+                    # 個別ファイルのエラーは続行
             
+            if backup_created:
+                logging.info(f"ユーザーデータバックアップ完了: {backup_dir}")
+            else:
+                logging.info("バックアップ対象ファイルが見つかりませんでした")
+                
             return backup_created
             
         except Exception as e:
@@ -607,7 +749,41 @@ class VersionChecker:
                     QMessageBox.critical(self.parent, "更新エラー", "更新処理の初期化に失敗しました")
                     return
                 
+                # ダウンロード開始前の事前チェック
+                try:
+                    # ディスク容量チェック（簡易）
+                    import shutil
+                    total, used, free = shutil.disk_usage(app_dir)
+                    free_mb = free / (1024 * 1024)
+                    if free_mb < 100:  # 100MB未満の場合は警告
+                        logging.warning(f"ディスク容量不足の可能性: {free_mb:.1f}MB")
+                        reply = QMessageBox.question(
+                            self.parent,
+                            "容量警告",
+                            f"ディスクの空き容量が少ないです（{free_mb:.1f}MB）。\n更新を続行しますか？",
+                            QMessageBox.Yes | QMessageBox.No,
+                            QMessageBox.No
+                        )
+                        if reply == QMessageBox.No:
+                            progress.close()
+                            return
+                            
+                    # ターゲットディレクトリの書き込み権限チェック
+                    if not os.access(app_dir, os.W_OK):
+                        progress.close()
+                        QMessageBox.critical(
+                            self.parent,
+                            "権限エラー", 
+                            f"アプリケーションディレクトリに書き込み権限がありません：\n{app_dir}"
+                        )
+                        return
+                        
+                except Exception as e:
+                    logging.warning(f"事前チェックエラー: {e}")
+                    # 事前チェックエラーは続行
+                
                 # ダウンロード開始
+                logging.info("アップデートダウンロード開始")
                 downloader.start()
                 return
         except Exception as e:
