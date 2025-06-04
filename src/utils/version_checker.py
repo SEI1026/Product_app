@@ -527,51 +527,94 @@ class VersionChecker:
             新しいバージョンがある場合はVersionInfo、それ以外はNone
         """
         try:
+            self.logger.info(f"バージョンチェック開始: 現在={CURRENT_VERSION}, URL={VERSION_CHECK_URL}")
+            
             # GitHub APIからversion.jsonを取得
-            req = Request(VERSION_CHECK_URL, headers={'User-Agent': 'Mozilla/5.0'})
-            with urlopen(req, timeout=10) as response:
-                version_data = json.loads(response.read().decode('utf-8'))
+            req = Request(VERSION_CHECK_URL, headers={
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                'Cache-Control': 'no-cache'
+            })
+            
+            with urlopen(req, timeout=15) as response:
+                if response.getcode() != 200:
+                    raise Exception(f"HTTP {response.getcode()}: バージョン情報の取得に失敗")
+                    
+                raw_data = response.read()
+                self.logger.info(f"バージョンデータ取得成功: {len(raw_data)} bytes")
+                version_data = json.loads(raw_data.decode('utf-8'))
             
             version_info = VersionInfo(version_data)
+            remote_version = version_info.version
+            
+            self.logger.info(f"バージョン比較: 現在={CURRENT_VERSION}, リモート={remote_version}")
             
             # バージョン比較
-            if self._is_newer_version(version_info.version, CURRENT_VERSION):
+            if self._is_newer_version(remote_version, CURRENT_VERSION):
+                self.logger.info(f"新しいバージョンを検出: {remote_version}")
                 return version_info
-            elif not silent:
-                QMessageBox.information(
-                    self.parent,
-                    "更新確認",
-                    f"お使いのバージョン ({CURRENT_VERSION}) は最新です。"
-                )
-            return None
+            else:
+                self.logger.info(f"最新バージョンを使用中: {CURRENT_VERSION}")
+                if not silent:
+                    QMessageBox.information(
+                        self.parent,
+                        "更新確認",
+                        f"お使いのバージョン ({CURRENT_VERSION}) は最新です。\n\n"
+                        f"リモートバージョン: {remote_version}\n"
+                        f"チェック日時: {version_info.release_date}"
+                    )
+                return None
             
         except (URLError, HTTPError) as e:
-            self.logger.error(f"バージョンチェック中のネットワークエラー: {e}")
+            error_msg = f"ネットワークエラー: {e}"
+            self.logger.error(f"バージョンチェック中の{error_msg}")
             if not silent:
                 QMessageBox.warning(
                     self.parent,
                     "更新確認エラー",
-                    "更新の確認中にエラーが発生しました。\nインターネット接続を確認してください。"
+                    f"更新の確認中にエラーが発生しました。\n\n"
+                    f"エラー詳細: {error_msg}\n\n"
+                    f"現在のバージョン: {CURRENT_VERSION}\n"
+                    f"チェックURL: {VERSION_CHECK_URL}\n\n"
+                    f"インターネット接続を確認してください。"
                 )
             return None
             
-        except UnicodeEncodeError as e:
-            self.logger.error(f"バージョンチェック中のエンコーディングエラー: {e}")
+        except json.JSONDecodeError as e:
+            error_msg = f"JSON解析エラー: {e}"
+            self.logger.error(f"バージョンチェック中の{error_msg}")
             if not silent:
                 QMessageBox.warning(
                     self.parent,
                     "更新確認エラー",
-                    "更新の確認中にエンコーディングエラーが発生しました。\n設定を確認してください。"
+                    f"バージョン情報の解析中にエラーが発生しました。\n\n"
+                    f"エラー詳細: {error_msg}\n\n"
+                    f"GitHub上のversion.jsonファイルを確認してください。"
+                )
+            return None
+            
+        except UnicodeDecodeError as e:
+            error_msg = f"エンコーディングエラー: {e}"
+            self.logger.error(f"バージョンチェック中の{error_msg}")
+            if not silent:
+                QMessageBox.warning(
+                    self.parent,
+                    "更新確認エラー",
+                    f"文字エンコーディングエラーが発生しました。\n\n"
+                    f"エラー詳細: {error_msg}"
                 )
             return None
             
         except Exception as e:
-            self.logger.error(f"バージョンチェック中の予期しないエラー: {e}")
+            error_msg = f"予期しないエラー: {e}"
+            self.logger.error(f"バージョンチェック中の{error_msg}", exc_info=True)
             if not silent:
                 QMessageBox.warning(
                     self.parent,
                     "更新確認エラー",
-                    "更新の確認中にエラーが発生しました。\nネットワーク接続を確認してください。"
+                    f"更新の確認中に予期しないエラーが発生しました。\n\n"
+                    f"エラー詳細: {error_msg}\n\n"
+                    f"現在のバージョン: {CURRENT_VERSION}\n"
+                    f"ネットワーク接続と設定を確認してください。"
                 )
             return None
     
