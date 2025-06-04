@@ -17,7 +17,7 @@ from PyQt5.QtCore import QThread, pyqtSignal, QObject
 from PyQt5.QtWidgets import QMessageBox, QProgressDialog, QPushButton, QApplication
 
 # 現在のアプリケーションバージョン
-CURRENT_VERSION = "2.1.9"
+CURRENT_VERSION = "2.2.0"
 
 # GitHub上のversion.jsonのURL
 # 株式会社大宝家具の商品登録入力ツール
@@ -70,91 +70,168 @@ class UpdateDownloader(QThread):
         self.download_url = download_url
         self.target_dir = target_dir
         self.temp_file = None
+        self._cancelled = False
         
     def run(self):
         """更新ファイルをダウンロードして展開"""
+        extract_dir = None
         try:
+            # キャンセルチェック
+            if self._cancelled:
+                return
+                
             # 一時ディレクトリを使用（より安全）
             temp_dir = tempfile.gettempdir()
             self.temp_file = os.path.join(temp_dir, f'update_{os.getpid()}.zip')
             
             logging.info(f"一時ファイルパス: {self.temp_file}")
             logging.info(f"ダウンロードURL: {self.download_url}")
+            
+            # URL検証
+            if not self.download_url or not self.download_url.startswith('https://'):
+                raise Exception("無効なダウンロードURLです")
                 
             self.status.emit("更新ファイルをダウンロード中...")
             
-            # ダウンロード
-            req = Request(self.download_url, headers={'User-Agent': 'Mozilla/5.0'})
+            # ダウンロード処理を安全にラップ
             try:
-                with urlopen(req) as response:
-                    # HTTPステータスコードをチェック
-                    if response.getcode() != 200:
-                        raise Exception(f"HTTPエラー: {response.getcode()} - ダウンロードファイルが見つかりません")
-                    
-                    total_size = int(response.headers.get('Content-Length', 0))
-                    downloaded = 0
-                    logging.info(f"ダウンロードサイズ: {total_size} bytes")
-                    
-                    with open(self.temp_file, 'wb') as f:
-                        while True:
-                            chunk = response.read(8192)
-                            if not chunk:
-                                break
-                            f.write(chunk)
-                            downloaded += len(chunk)
-                            if total_size > 0:
-                                progress = int((downloaded / total_size) * 100)
-                                self.progress.emit(progress)
-                                
-            except HTTPError as e:
-                raise Exception(f"HTTPエラー {e.code}: ダウンロードファイルが見つかりません。\nURL: {self.download_url}")
-            except URLError as e:
-                raise Exception(f"ネットワークエラー: {e.reason}")
-            except Exception as download_e:
-                raise Exception(f"ダウンロードエラー: {str(download_e)}")
-            
-            self.status.emit("更新ファイルを展開中...")
-            
-            # ZIPファイルの存在確認
-            if not os.path.exists(self.temp_file):
-                raise Exception("ダウンロードしたファイルが見つかりません")
+                self._download_file()
                 
-            # ZIPファイルのサイズ確認
-            file_size = os.path.getsize(self.temp_file)
-            if file_size < 1000:  # 1KB未満の場合は無効なファイル
-                raise Exception(f"ダウンロードしたファイルが不完全です（サイズ: {file_size} bytes）")
-            
-            # ZIPファイルを展開
-            try:
-                with zipfile.ZipFile(self.temp_file, 'r') as zip_ref:
-                    # 一時ディレクトリに展開
-                    extract_dir = tempfile.mkdtemp()
-                    logging.info(f"展開先ディレクトリ: {extract_dir}")
-                    zip_ref.extractall(extract_dir)
+                if self._cancelled:
+                    return
                     
-                    # 更新ファイルをターゲットディレクトリにコピー
-                    self._update_files(extract_dir, self.target_dir)
-                    
-                    # 一時ディレクトリを削除
-                    shutil.rmtree(extract_dir)
-            except zipfile.BadZipFile:
-                raise Exception("ダウンロードしたファイルが有効なZIPファイルではありません")
-            except Exception as extract_e:
-                raise Exception(f"ファイル展開エラー: {str(extract_e)}")
-            
-            self.finished.emit(True, "更新が正常に完了しました")
+                self.status.emit("更新ファイルを展開中...")
+                
+                # ZIPファイルの検証と展開
+                extract_dir = self._extract_and_validate_zip()
+                
+                if self._cancelled:
+                    return
+                
+                # ファイル更新処理
+                self._update_files(extract_dir, self.target_dir)
+                
+                self.finished.emit(True, "更新が正常に完了しました")
+                
+            except Exception as process_e:
+                error_msg = str(process_e)
+                logging.error(f"更新処理エラー: {error_msg}")
+                self.finished.emit(False, f"更新のダウンロードに失敗しました: {error_msg}")
             
         except Exception as e:
-            logging.error(f"更新のダウンロード中にエラー: {e}")
-            self.finished.emit(False, f"更新のダウンロードに失敗しました: {str(e)}")
+            error_msg = str(e)
+            logging.error(f"更新ダウンロード中の予期しないエラー: {error_msg}")
+            if not self._cancelled:
+                self.finished.emit(False, f"更新中に予期しないエラーが発生しました: {error_msg}")
             
         finally:
-            # 一時ファイルを削除
-            if self.temp_file and os.path.exists(self.temp_file):
+            # クリーンアップ処理
+            self._cleanup(extract_dir)
+    
+    def _download_file(self):
+        """ファイルダウンロード処理"""
+        req = Request(self.download_url, headers={
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        })
+        
+        try:
+            with urlopen(req, timeout=30) as response:
+                # HTTPステータスコードをチェック
+                if response.getcode() != 200:
+                    raise Exception(f"HTTPエラー: {response.getcode()} - ダウンロードファイルが見つかりません")
+                
+                # Content-Lengthを安全に取得
                 try:
-                    os.unlink(self.temp_file)
-                except:
-                    pass
+                    total_size = int(response.headers.get('Content-Length', 0))
+                except (ValueError, TypeError):
+                    total_size = 0
+                
+                downloaded = 0
+                logging.info(f"ダウンロード開始 - サイズ: {total_size} bytes")
+                
+                with open(self.temp_file, 'wb') as f:
+                    while True:
+                        if self._cancelled:
+                            break
+                            
+                        chunk = response.read(8192)
+                        if not chunk:
+                            break
+                            
+                        f.write(chunk)
+                        downloaded += len(chunk)
+                        
+                        # プログレス更新
+                        if total_size > 0:
+                            progress = min(int((downloaded / total_size) * 100), 100)
+                            self.progress.emit(progress)
+                            
+        except HTTPError as e:
+            raise Exception(f"HTTPエラー {e.code}: ダウンロードファイルが見つかりません。\nURL: {self.download_url}")
+        except URLError as e:
+            raise Exception(f"ネットワークエラー: {e.reason}")
+        except OSError as e:
+            raise Exception(f"ファイル書き込みエラー: {str(e)}")
+        except Exception as e:
+            raise Exception(f"ダウンロードエラー: {str(e)}")
+    
+    def _extract_and_validate_zip(self):
+        """ZIPファイルの検証と展開"""
+        # ZIPファイルの存在確認
+        if not os.path.exists(self.temp_file):
+            raise Exception("ダウンロードしたファイルが見つかりません")
+            
+        # ZIPファイルのサイズ確認
+        file_size = os.path.getsize(self.temp_file)
+        if file_size < 1000:  # 1KB未満の場合は無効なファイル
+            raise Exception(f"ダウンロードしたファイルが不完全です（サイズ: {file_size} bytes）")
+        
+        # ZIPファイルの整合性確認と展開
+        try:
+            with zipfile.ZipFile(self.temp_file, 'r') as zip_ref:
+                # ZIPファイルの整合性テスト
+                bad_file = zip_ref.testzip()
+                if bad_file:
+                    raise Exception(f"ZIPファイルが破損しています: {bad_file}")
+                
+                # 一時ディレクトリに展開
+                extract_dir = tempfile.mkdtemp(prefix='update_extract_')
+                logging.info(f"展開先ディレクトリ: {extract_dir}")
+                
+                zip_ref.extractall(extract_dir)
+                return extract_dir
+                
+        except zipfile.BadZipFile:
+            raise Exception("ダウンロードしたファイルが有効なZIPファイルではありません")
+        except PermissionError:
+            raise Exception("ファイル展開の権限がありません")
+        except OSError as e:
+            raise Exception(f"ファイル展開中のシステムエラー: {str(e)}")
+        except Exception as e:
+            raise Exception(f"ファイル展開エラー: {str(e)}")
+    
+    def _cleanup(self, extract_dir=None):
+        """クリーンアップ処理"""
+        # 一時ファイルを削除
+        if self.temp_file and os.path.exists(self.temp_file):
+            try:
+                os.unlink(self.temp_file)
+                logging.info(f"一時ファイルを削除: {self.temp_file}")
+            except Exception as e:
+                logging.warning(f"一時ファイル削除エラー: {e}")
+        
+        # 展開ディレクトリを削除
+        if extract_dir and os.path.exists(extract_dir):
+            try:
+                shutil.rmtree(extract_dir)
+                logging.info(f"展開ディレクトリを削除: {extract_dir}")
+            except Exception as e:
+                logging.warning(f"展開ディレクトリ削除エラー: {e}")
+    
+    def terminate(self):
+        """ダウンロードをキャンセル"""
+        self._cancelled = True
+        super().terminate()
     
     def _update_files(self, source_dir: str, target_dir: str):
         """ファイルを更新（実行中のファイルは.newとして保存、ユーザーデータは保護）"""
@@ -453,53 +530,108 @@ class VersionChecker:
                 # ダウンロード用スレッドを作成
                 downloader = UpdateDownloader(version_info.download_url, app_dir)
                 
-                # プログレスバーの更新
-                downloader.progress.connect(progress.setValue)
-                downloader.status.connect(progress.setLabelText)
-                
-                # 完了時の処理
-                def on_finished(success: bool, message: str):
+                # プログレスバーの更新を安全に接続
+                try:
+                    downloader.progress.connect(progress.setValue)
+                    downloader.status.connect(progress.setLabelText)
+                except Exception as e:
+                    logging.error(f"シグナル接続エラー: {e}")
                     progress.close()
-                    
-                    if success:
-                        # 更新成功
-                        msg_box = QMessageBox(self.parent)
-                        msg_box.setIcon(QMessageBox.Information)
-                        msg_box.setWindowTitle("更新完了")
-                        msg_box.setText(f"{message}")
-                        msg_box.setInformativeText("今すぐアプリケーションを再起動して更新を適用しますか？")
+                    QMessageBox.critical(
+                        self.parent,
+                        "更新エラー",
+                        f"ダウンロード準備中にエラーが発生しました: {str(e)}"
+                    )
+                    return
+                
+                # 完了時の処理を安全にラップ
+                def on_finished(success: bool, message: str):
+                    try:
+                        progress.close()
                         
-                        restart_btn = msg_box.addButton("今すぐ再起動", QMessageBox.AcceptRole)
-                        later_btn = msg_box.addButton("後で再起動", QMessageBox.RejectRole)
-                        msg_box.setDefaultButton(restart_btn)
-                        
-                        msg_box.exec_()
-                        
-                        if msg_box.clickedButton() == restart_btn:
-                            # 自動再起動スクリプトを実行
-                            self._create_restart_script()
+                        if success:
+                            # 更新成功
+                            msg_box = QMessageBox(self.parent)
+                            msg_box.setIcon(QMessageBox.Information)
+                            msg_box.setWindowTitle("更新完了")
+                            msg_box.setText(f"{message}")
+                            msg_box.setInformativeText("今すぐアプリケーションを再起動して更新を適用しますか？")
+                            
+                            restart_btn = msg_box.addButton("今すぐ再起動", QMessageBox.AcceptRole)
+                            later_btn = msg_box.addButton("後で再起動", QMessageBox.RejectRole)
+                            msg_box.setDefaultButton(restart_btn)
+                            
+                            msg_box.exec_()
+                            
+                            if msg_box.clickedButton() == restart_btn:
+                                # 自動再起動スクリプトを実行
+                                try:
+                                    self._create_restart_script()
+                                except Exception as restart_e:
+                                    logging.error(f"再起動スクリプト作成エラー: {restart_e}")
+                                    QMessageBox.warning(
+                                        self.parent,
+                                        "再起動エラー",
+                                        "自動再起動に失敗しました。手動でアプリケーションを再起動してください。"
+                                    )
+                            else:
+                                # 次回起動時に更新が適用されることを通知
+                                QMessageBox.information(
+                                    self.parent,
+                                    "更新予定",
+                                    "更新は次回アプリケーション起動時に適用されます。"
+                                )
                         else:
-                            # 次回起動時に更新が適用されることを通知
-                            QMessageBox.information(
+                            # 更新失敗
+                            QMessageBox.critical(
                                 self.parent,
-                                "更新予定",
-                                "更新は次回アプリケーション起動時に適用されます。"
+                                "更新エラー",
+                                message
                             )
-                    else:
-                        # 更新失敗
-                        QMessageBox.critical(
-                            self.parent,
-                            "更新エラー",
-                            message
-                        )
+                    except Exception as e:
+                        logging.error(f"完了処理エラー: {e}")
+                        try:
+                            QMessageBox.critical(
+                                self.parent,
+                                "更新エラー",
+                                f"更新完了処理中にエラーが発生しました: {str(e)}"
+                            )
+                        except:
+                            pass  # メッセージボックス表示も失敗した場合
                 
-                downloader.finished.connect(on_finished)
-                
-                # キャンセルボタンの処理
-                progress.canceled.connect(downloader.terminate)
-                
-                # ダウンロード開始
-                downloader.start()
+                try:
+                    downloader.finished.connect(on_finished)
+                    
+                    # キャンセルボタンの処理
+                    def on_cancel():
+                        try:
+                            downloader.terminate()
+                            downloader.wait(3000)  # 3秒待機
+                        except Exception as e:
+                            logging.error(f"ダウンロードキャンセルエラー: {e}")
+                    
+                    progress.canceled.connect(on_cancel)
+                    
+                    # ダウンロード開始
+                    downloader.start()
+                    
+                    # メインスレッドでイベントループを維持
+                    while downloader.isRunning():
+                        QApplication.processEvents()
+                        downloader.msleep(50)
+                    
+                except Exception as e:
+                    logging.error(f"ダウンロード開始エラー: {e}")
+                    progress.close()
+                    QMessageBox.critical(
+                        self.parent,
+                        "更新エラー",
+                        f"ダウンロード開始中にエラーが発生しました: {str(e)}"
+                    )
+                    try:
+                        downloader.terminate()
+                    except:
+                        pass
                 return
         except Exception as e:
             logging.error(f"更新ダイアログ作成中にエラー: {e}")
