@@ -1,0 +1,415 @@
+﻿"""
+バージョンチェッカー - GitHub上の最新バージョンを確認し、自動更新を管理
+"""
+
+import json
+import logging
+import os
+import sys
+import subprocess
+import tempfile
+import zipfile
+import shutil
+from typing import Optional, Dict, Any, Tuple
+from urllib.request import urlopen, Request
+from urllib.error import URLError, HTTPError
+from PyQt5.QtCore import QThread, pyqtSignal, QObject
+from PyQt5.QtWidgets import QMessageBox, QProgressDialog, QPushButton, QApplication
+
+# 現在のアプリケーションバージョン
+CURRENT_VERSION = "2.1.6"
+
+# GitHub上のversion.jsonのURL
+# 株式会社大宝家具の商品登録入力ツール
+# ※実際のGitHubリポジトリURLに合わせて変更してください
+VERSION_CHECK_URL = "https://raw.githubusercontent.com/SEI1026/Product_app/main/version.json"
+
+
+class VersionInfo:
+    """バージョン情報を格納するクラス"""
+    
+    def __init__(self, version_data: Dict[str, Any]):
+        self.version = version_data.get("version", "0.0.0")
+        self.release_date = version_data.get("release_date", "")
+        self.download_url = version_data.get("download_url", "")
+        self.changelog = version_data.get("changelog", {})
+        self.minimum_required_version = version_data.get("minimum_required_version", "0.0.0")
+        
+    def get_latest_changes(self) -> str:
+        """最新バージョンの変更点を取得"""
+        if self.version in self.changelog:
+            changes = self.changelog[self.version]
+            features = changes.get("features", [])
+            improvements = changes.get("improvements", [])
+            bug_fixes = changes.get("bug_fixes", [])
+            
+            result = []
+            if features:
+                result.append("【新機能】")
+                result.extend([f"• {f}" for f in features])
+            if improvements:
+                result.append("\n【改善点】")
+                result.extend([f"• {i}" for i in improvements])
+            if bug_fixes:
+                result.append("\n【バグ修正】")
+                result.extend([f"• {b}" for b in bug_fixes])
+                
+            return "\n".join(result)
+        return "変更点の情報がありません"
+
+
+class UpdateDownloader(QThread):
+    """バックグラウンドで更新をダウンロードするスレッド"""
+    
+    progress = pyqtSignal(int)  # ダウンロード進捗
+    status = pyqtSignal(str)    # ステータスメッセージ
+    finished = pyqtSignal(bool, str)  # 完了シグナル（成功/失敗, メッセージ）
+    
+    def __init__(self, download_url: str, target_dir: str):
+        super().__init__()
+        self.download_url = download_url
+        self.target_dir = target_dir
+        self.temp_file = None
+        
+    def run(self):
+        """更新ファイルをダウンロードして展開"""
+        try:
+            # 一時ファイルを作成
+            with tempfile.NamedTemporaryFile(delete=False, suffix='.zip') as tmp:
+                self.temp_file = tmp.name
+                
+            self.status.emit("更新ファイルをダウンロード中...")
+            
+            # ダウンロード
+            req = Request(self.download_url, headers={'User-Agent': 'Mozilla/5.0'})
+            with urlopen(req) as response:
+                total_size = int(response.headers.get('Content-Length', 0))
+                downloaded = 0
+                
+                with open(self.temp_file, 'wb') as f:
+                    while True:
+                        chunk = response.read(8192)
+                        if not chunk:
+                            break
+                        f.write(chunk)
+                        downloaded += len(chunk)
+                        if total_size > 0:
+                            progress = int((downloaded / total_size) * 100)
+                            self.progress.emit(progress)
+            
+            self.status.emit("更新ファイルを展開中...")
+            
+            # ZIPファイルを展開
+            with zipfile.ZipFile(self.temp_file, 'r') as zip_ref:
+                # 一時ディレクトリに展開
+                extract_dir = tempfile.mkdtemp()
+                zip_ref.extractall(extract_dir)
+                
+                # 更新ファイルをターゲットディレクトリにコピー
+                self._update_files(extract_dir, self.target_dir)
+                
+                # 一時ディレクトリを削除
+                shutil.rmtree(extract_dir)
+            
+            self.finished.emit(True, "更新が正常に完了しました")
+            
+        except Exception as e:
+            logging.error(f"更新のダウンロード中にエラー: {e}")
+            self.finished.emit(False, f"更新のダウンロードに失敗しました: {str(e)}")
+            
+        finally:
+            # 一時ファイルを削除
+            if self.temp_file and os.path.exists(self.temp_file):
+                try:
+                    os.unlink(self.temp_file)
+                except:
+                    pass
+    
+    def _update_files(self, source_dir: str, target_dir: str):
+        """ファイルを更新（実行中のファイルは.newとして保存）"""
+        current_exe = os.path.abspath(sys.executable)
+        current_exe_name = os.path.basename(current_exe)
+        updated_exe = False
+        
+        # 展開されたファイルを探す
+        for root, dirs, files in os.walk(source_dir):
+            rel_path = os.path.relpath(root, source_dir)
+            target_root = os.path.join(target_dir, rel_path) if rel_path != '.' else target_dir
+            
+            # ディレクトリを作成
+            if not os.path.exists(target_root):
+                os.makedirs(target_root, exist_ok=True)
+            
+            for file in files:
+                source_file = os.path.join(root, file)
+                target_file = os.path.join(target_root, file)
+                
+                # PyInstallerでビルドされたexeファイルの更新
+                if getattr(sys, 'frozen', False):
+                    # 実行ファイル名と一致する場合（商品登録ツール.exe など）
+                    if file.lower() == current_exe_name.lower() or file.lower().endswith('.exe'):
+                        # 実行中のexeファイルは.newとして保存
+                        target_file = current_exe + '.new'
+                        updated_exe = True
+                        self.status.emit(f"実行ファイルを更新中: {file}")
+                else:
+                    # 開発環境の場合、実行中のスクリプトと同じ場合
+                    if os.path.abspath(target_file) == current_exe:
+                        target_file = target_file + '.new'
+                        updated_exe = True
+                
+                # ファイルをコピー
+                try:
+                    shutil.copy2(source_file, target_file)
+                    logging.info(f"更新ファイルをコピー: {source_file} -> {target_file}")
+                except Exception as e:
+                    logging.error(f"ファイルコピーエラー: {e}")
+                    raise
+        
+        if not updated_exe and getattr(sys, 'frozen', False):
+            # exeファイルが見つからなかった場合の警告
+            logging.warning("更新パッケージ内に実行ファイルが見つかりませんでした")
+
+
+class VersionChecker:
+    """バージョンチェックと更新管理を行うクラス"""
+    
+    def __init__(self, parent=None):
+        self.parent = parent
+        self.logger = logging.getLogger(__name__)
+        
+    def check_for_updates(self, silent: bool = False) -> Optional[VersionInfo]:
+        """
+        GitHub上の最新バージョンをチェック
+        
+        Args:
+            silent: Trueの場合、最新版の場合にメッセージを表示しない
+            
+        Returns:
+            新しいバージョンがある場合はVersionInfo、それ以外はNone
+        """
+        try:
+            # GitHub APIからversion.jsonを取得
+            req = Request(VERSION_CHECK_URL, headers={'User-Agent': 'Mozilla/5.0'})
+            with urlopen(req, timeout=10) as response:
+                version_data = json.loads(response.read().decode('utf-8'))
+            
+            version_info = VersionInfo(version_data)
+            
+            # バージョン比較
+            if self._is_newer_version(version_info.version, CURRENT_VERSION):
+                return version_info
+            elif not silent:
+                QMessageBox.information(
+                    self.parent,
+                    "更新確認",
+                    f"お使いのバージョン ({CURRENT_VERSION}) は最新です。"
+                )
+            return None
+            
+        except (URLError, HTTPError) as e:
+            self.logger.error(f"バージョンチェック中のネットワークエラー: {e}")
+            if not silent:
+                QMessageBox.warning(
+                    self.parent,
+                    "更新確認エラー",
+                    "更新の確認中にエラーが発生しました。\nインターネット接続を確認してください。"
+                )
+            return None
+            
+        except UnicodeEncodeError as e:
+            self.logger.error(f"バージョンチェック中のエンコーディングエラー: {e}")
+            if not silent:
+                QMessageBox.warning(
+                    self.parent,
+                    "更新確認エラー",
+                    "更新の確認中にエンコーディングエラーが発生しました。\n設定を確認してください。"
+                )
+            return None
+            
+        except Exception as e:
+            self.logger.error(f"バージョンチェック中の予期しないエラー: {e}")
+            if not silent:
+                QMessageBox.warning(
+                    self.parent,
+                    "更新確認エラー",
+                    "更新の確認中にエラーが発生しました。\nネットワーク接続を確認してください。"
+                )
+            return None
+    
+    def prompt_for_update(self, version_info: VersionInfo) -> bool:
+        """
+        更新するかユーザーに確認
+        
+        Returns:
+            更新する場合True
+        """
+        message = f"""新しいバージョン {version_info.version} が利用可能です。
+（現在のバージョン: {CURRENT_VERSION}）
+
+リリース日: {version_info.release_date}
+
+{version_info.get_latest_changes()}
+
+今すぐ更新しますか？"""
+        
+        reply = QMessageBox.question(
+            self.parent,
+            "更新の確認",
+            message,
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.Yes
+        )
+        
+        return reply == QMessageBox.Yes
+    
+    def download_and_install_update(self, version_info: VersionInfo):
+        """更新をダウンロードしてインストール"""
+        # プログレスダイアログを作成
+        progress = QProgressDialog("更新ファイルをダウンロード中...", "キャンセル", 0, 100, self.parent)
+        progress.setWindowTitle(f"商品登録入力ツール v{version_info.version} へのアップデート")
+        progress.setModal(True)
+        progress.setAutoClose(False)
+        progress.setMinimumDuration(0)  # すぐに表示
+        progress.setMinimumWidth(400)  # 幅を広げる
+        progress.show()
+        
+        # アプリケーションディレクトリを取得
+        if getattr(sys, 'frozen', False):
+            # PyInstallerでビルドされた場合
+            app_dir = os.path.dirname(sys.executable)
+        else:
+            # 開発環境の場合
+            app_dir = os.path.dirname(os.path.abspath(__file__))
+        
+        # ダウンローダースレッドを作成
+        downloader = UpdateDownloader(version_info.download_url, app_dir)
+        
+        # シグナルを接続
+        downloader.progress.connect(progress.setValue)
+        downloader.status.connect(progress.setLabelText)
+        
+        def on_finished(success: bool, message: str):
+            progress.close()
+            
+            if success:
+                # 更新成功
+                msg_box = QMessageBox(self.parent)
+                msg_box.setIcon(QMessageBox.Information)
+                msg_box.setWindowTitle("更新完了")
+                msg_box.setText(f"{message}")
+                msg_box.setInformativeText("今すぐアプリケーションを再起動して更新を適用しますか？")
+                
+                restart_btn = msg_box.addButton("今すぐ再起動", QMessageBox.AcceptRole)
+                later_btn = msg_box.addButton("後で再起動", QMessageBox.RejectRole)
+                msg_box.setDefaultButton(restart_btn)
+                
+                msg_box.exec_()
+                
+                if msg_box.clickedButton() == restart_btn:
+                    # 自動再起動スクリプトを実行
+                    self._create_restart_script()
+                else:
+                    # 次回起動時に更新が適用されることを通知
+                    QMessageBox.information(
+                        self.parent,
+                        "更新予定",
+                        "更新は次回アプリケーション起動時に適用されます。"
+                    )
+            else:
+                # 更新失敗
+                QMessageBox.critical(
+                    self.parent,
+                    "更新エラー",
+                    message
+                )
+        
+        downloader.finished.connect(on_finished)
+        
+        # キャンセルボタンの処理
+        progress.canceled.connect(downloader.terminate)
+        
+        # ダウンロード開始
+        downloader.start()
+    
+    def _is_newer_version(self, version1: str, version2: str) -> bool:
+        """
+        バージョン比較（version1 > version2 の場合True）
+        """
+        try:
+            v1_parts = [int(x) for x in version1.split('.')]
+            v2_parts = [int(x) for x in version2.split('.')]
+            
+            # バージョン番号の長さを揃える
+            max_len = max(len(v1_parts), len(v2_parts))
+            v1_parts.extend([0] * (max_len - len(v1_parts)))
+            v2_parts.extend([0] * (max_len - len(v2_parts)))
+            
+            return v1_parts > v2_parts
+            
+        except ValueError:
+            # バージョン番号のパースに失敗した場合は文字列比較
+            return version1 > version2
+    
+    def _create_restart_script(self):
+        """再起動用のスクリプトを作成"""
+        if sys.platform == 'win32':
+            # Windowsの場合
+            exe_path = sys.executable
+            exe_dir = os.path.dirname(exe_path)
+            exe_name = os.path.basename(exe_path)
+            script_path = os.path.join(exe_dir, 'update_restart.bat')
+            
+            # バッチファイルを作成（日本語対応）
+            with open(script_path, 'w', encoding='utf-8') as f:
+                f.write(f'''@echo off
+chcp 65001 >nul
+echo 更新を適用しています...
+timeout /t 3 /nobreak > nul
+:retry
+if exist "{exe_path}.new" (
+    taskkill /f /im "{exe_name}" >nul 2>&1
+    timeout /t 1 /nobreak > nul
+    move /y "{exe_path}.new" "{exe_path}" >nul 2>&1
+    if errorlevel 1 (
+        echo ファイルの置換に失敗しました。再試行します...
+        timeout /t 2 /nobreak > nul
+        goto retry
+    )
+)
+echo 更新が完了しました。アプリケーションを起動します...
+start "" "{exe_path}"
+del "%~f0"
+''')
+            # バッチファイルを実行して即座に終了
+            subprocess.Popen(['cmd', '/c', script_path], 
+                           creationflags=subprocess.CREATE_NEW_CONSOLE)
+            # アプリケーションを終了
+            QApplication.quit()
+        else:
+            # Unix系の場合
+            script_path = os.path.join(os.path.dirname(sys.executable), 'restart.sh')
+            with open(script_path, 'w') as f:
+                f.write(f'''#!/bin/bash
+sleep 2
+if [ -f "{sys.executable}.new" ]; then
+    mv -f "{sys.executable}.new" "{sys.executable}"
+fi
+"{sys.executable}" &
+rm -f "$0"
+''')
+            os.chmod(script_path, 0o755)
+            subprocess.Popen(['/bin/bash', script_path])
+
+
+def check_for_updates_on_startup(parent=None):
+    """
+    起動時の自動更新チェック（非同期）
+    """
+    checker = VersionChecker(parent)
+    version_info = checker.check_for_updates(silent=True)
+    
+    if version_info:
+        # 新しいバージョンがある場合
+        if checker.prompt_for_update(version_info):
+            checker.download_and_install_update(version_info)
