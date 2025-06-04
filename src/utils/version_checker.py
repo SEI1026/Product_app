@@ -128,10 +128,24 @@ class UpdateDownloader(QThread):
                     pass
     
     def _update_files(self, source_dir: str, target_dir: str):
-        """ファイルを更新（実行中のファイルは.newとして保存）"""
+        """ファイルを更新（実行中のファイルは.newとして保存、ユーザーデータは保護）"""
         current_exe = os.path.abspath(sys.executable)
         current_exe_name = os.path.basename(current_exe)
         updated_exe = False
+        
+        # ユーザーデータファイル（保護対象）のパターン
+        protected_patterns = [
+            'item_manage.xlsm',  # ユーザーの商品管理ファイル
+            '*_user_*',          # ユーザー作成ファイル
+            '*.backup',          # バックアップファイル  
+            'user_settings.json', # ユーザー設定
+            'config.ini',        # 設定ファイル
+        ]
+        
+        # ユーザーデータのバックアップを作成
+        backup_created = self._create_user_data_backup(target_dir)
+        if backup_created:
+            self.status.emit("ユーザーデータのバックアップを作成しました")
         
         # 展開されたファイルを探す
         for root, dirs, files in os.walk(source_dir):
@@ -145,6 +159,14 @@ class UpdateDownloader(QThread):
             for file in files:
                 source_file = os.path.join(root, file)
                 target_file = os.path.join(target_root, file)
+                
+                # ユーザーデータファイルの保護チェック
+                if self._is_user_data_file(file, rel_path, protected_patterns):
+                    # 既存のユーザーデータファイルがある場合は保護
+                    if os.path.exists(target_file):
+                        self.status.emit(f"ユーザーデータを保護: {file}")
+                        logging.info(f"ユーザーデータファイルを保護: {target_file}")
+                        continue  # このファイルはスキップ
                 
                 # PyInstallerでビルドされたexeファイルの更新
                 if getattr(sys, 'frozen', False):
@@ -171,6 +193,56 @@ class UpdateDownloader(QThread):
         if not updated_exe and getattr(sys, 'frozen', False):
             # exeファイルが見つからなかった場合の警告
             logging.warning("更新パッケージ内に実行ファイルが見つかりませんでした")
+    
+    def _is_user_data_file(self, filename: str, rel_path: str, protected_patterns: list) -> bool:
+        """ファイルがユーザーデータかどうかを判定"""
+        import fnmatch
+        
+        # ファイル名パターンマッチング
+        for pattern in protected_patterns:
+            if fnmatch.fnmatch(filename.lower(), pattern.lower()):
+                return True
+        
+        # 特定のディレクトリ内のファイル（C#ツール内など）
+        if 'C#' in rel_path and filename.endswith('.xlsm'):
+            return True
+            
+        # ファイルサイズ・更新日時による判定（テンプレートより大きい場合はユーザーデータの可能性）
+        # item_manage.xlsmがitem_template.xlsmより大きい場合など
+        
+        return False
+    
+    def _create_user_data_backup(self, target_dir: str) -> bool:
+        """重要なユーザーデータのバックアップを作成"""
+        try:
+            import datetime
+            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            backup_dir = os.path.join(target_dir, f"backup_before_update_{timestamp}")
+            
+            # バックアップ対象ファイル
+            important_files = [
+                'item_manage.xlsm',
+                'config.ini', 
+                'user_settings.json'
+            ]
+            
+            backup_created = False
+            for filename in important_files:
+                source_file = os.path.join(target_dir, filename)
+                if os.path.exists(source_file):
+                    if not os.path.exists(backup_dir):
+                        os.makedirs(backup_dir, exist_ok=True)
+                    
+                    backup_file = os.path.join(backup_dir, filename)
+                    shutil.copy2(source_file, backup_file)
+                    backup_created = True
+                    logging.info(f"バックアップ作成: {source_file} -> {backup_file}")
+            
+            return backup_created
+            
+        except Exception as e:
+            logging.error(f"バックアップ作成エラー: {e}")
+            return False
 
 
 class VersionChecker:
@@ -253,6 +325,11 @@ class VersionChecker:
 
 {version_info.get_latest_changes()}
 
+📋 データ保護機能:
+• ユーザーの商品データ (item_manage.xlsm) は自動保護
+• 設定ファイルとバックアップは自動作成
+• 更新前にバックアップフォルダを生成
+
 今すぐ更新しますか？"""
         
         reply = QMessageBox.question(
@@ -285,24 +362,43 @@ class VersionChecker:
                 # 開発環境の場合
                 app_dir = os.path.dirname(os.path.abspath(__file__))
             
-            # 簡易的な更新方法：ブラウザでダウンロードページを開く
-            progress.close()
-            
-            import webbrowser
+            # 自動ダウンロード機能：ユーザーの選択によって自動または手動
             msg_box = QMessageBox(self.parent)
-            msg_box.setIcon(QMessageBox.Information)
-            msg_box.setWindowTitle("更新方法")
+            msg_box.setIcon(QMessageBox.Question)
+            msg_box.setWindowTitle("更新方法の選択")
             msg_box.setText(f"新しいバージョン {version_info.version} をダウンロードします。")
             msg_box.setInformativeText(
-                "ブラウザでダウンロードページを開きます。\n"
-                "ダウンロード後、現在のアプリを終了してから\n"
-                "新しいバージョンをインストールしてください。"
+                "どちらの方法で更新しますか？\n\n"
+                "🔄 自動ダウンロード: アプリが自動でダウンロード・インストール\n"
+                "🌐 手動ダウンロード: ブラウザでダウンロードページを開く"
             )
-            msg_box.setStandardButtons(QMessageBox.Ok | QMessageBox.Cancel)
             
-            if msg_box.exec_() == QMessageBox.Ok:
+            auto_btn = msg_box.addButton("自動ダウンロード（推奨）", QMessageBox.AcceptRole)
+            manual_btn = msg_box.addButton("手動ダウンロード", QMessageBox.ActionRole) 
+            cancel_btn = msg_box.addButton("キャンセル", QMessageBox.RejectRole)
+            msg_box.setDefaultButton(auto_btn)
+            
+            msg_box.exec_()
+            clicked_button = msg_box.clickedButton()
+            
+            if clicked_button == cancel_btn:
+                progress.close()
+                return
+            elif clicked_button == manual_btn:
+                # 手動ダウンロード（従来の方法）
+                progress.close()
+                import webbrowser
+                
                 # GitHubリリースページを開く
-                release_url = version_info.download_url.rsplit('/', 2)[0]  # Get release page URL
+                download_url_parts = version_info.download_url.split('/')
+                if len(download_url_parts) >= 8 and download_url_parts[5] == 'releases':
+                    tag_name = download_url_parts[7]  # v2.1.7
+                    repo_path = '/'.join(download_url_parts[:5])  # https://github.com/SEI1026/Product_app
+                    release_url = f"{repo_path}/releases/tag/{tag_name}"
+                else:
+                    # フォールバック: リリース一覧ページ
+                    release_url = version_info.download_url.rsplit('/releases/', 1)[0] + '/releases'
+                
                 webbrowser.open(release_url)
                 
                 QMessageBox.information(
@@ -312,7 +408,60 @@ class VersionChecker:
                     "ダウンロード完了後、このアプリを終了してから\n"
                     "新しいバージョンをインストールしてください。"
                 )
-            return
+                return
+            else:
+                # 自動ダウンロード（新機能）
+                # ダウンロード用スレッドを作成
+                downloader = UpdateDownloader(version_info.download_url, app_dir)
+                
+                # プログレスバーの更新
+                downloader.progress.connect(progress.setValue)
+                downloader.status.connect(progress.setLabelText)
+                
+                # 完了時の処理
+                def on_finished(success: bool, message: str):
+                    progress.close()
+                    
+                    if success:
+                        # 更新成功
+                        msg_box = QMessageBox(self.parent)
+                        msg_box.setIcon(QMessageBox.Information)
+                        msg_box.setWindowTitle("更新完了")
+                        msg_box.setText(f"{message}")
+                        msg_box.setInformativeText("今すぐアプリケーションを再起動して更新を適用しますか？")
+                        
+                        restart_btn = msg_box.addButton("今すぐ再起動", QMessageBox.AcceptRole)
+                        later_btn = msg_box.addButton("後で再起動", QMessageBox.RejectRole)
+                        msg_box.setDefaultButton(restart_btn)
+                        
+                        msg_box.exec_()
+                        
+                        if msg_box.clickedButton() == restart_btn:
+                            # 自動再起動スクリプトを実行
+                            self._create_restart_script()
+                        else:
+                            # 次回起動時に更新が適用されることを通知
+                            QMessageBox.information(
+                                self.parent,
+                                "更新予定",
+                                "更新は次回アプリケーション起動時に適用されます。"
+                            )
+                    else:
+                        # 更新失敗
+                        QMessageBox.critical(
+                            self.parent,
+                            "更新エラー",
+                            message
+                        )
+                
+                downloader.finished.connect(on_finished)
+                
+                # キャンセルボタンの処理
+                progress.canceled.connect(downloader.terminate)
+                
+                # ダウンロード開始
+                downloader.start()
+                return
         except Exception as e:
             logging.error(f"更新ダイアログ作成中にエラー: {e}")
             QMessageBox.critical(
@@ -321,49 +470,6 @@ class VersionChecker:
                 f"更新の準備中にエラーが発生しました:\n{str(e)}"
             )
             return
-        
-        def on_finished(success: bool, message: str):
-            progress.close()
-            
-            if success:
-                # 更新成功
-                msg_box = QMessageBox(self.parent)
-                msg_box.setIcon(QMessageBox.Information)
-                msg_box.setWindowTitle("更新完了")
-                msg_box.setText(f"{message}")
-                msg_box.setInformativeText("今すぐアプリケーションを再起動して更新を適用しますか？")
-                
-                restart_btn = msg_box.addButton("今すぐ再起動", QMessageBox.AcceptRole)
-                later_btn = msg_box.addButton("後で再起動", QMessageBox.RejectRole)
-                msg_box.setDefaultButton(restart_btn)
-                
-                msg_box.exec_()
-                
-                if msg_box.clickedButton() == restart_btn:
-                    # 自動再起動スクリプトを実行
-                    self._create_restart_script()
-                else:
-                    # 次回起動時に更新が適用されることを通知
-                    QMessageBox.information(
-                        self.parent,
-                        "更新予定",
-                        "更新は次回アプリケーション起動時に適用されます。"
-                    )
-            else:
-                # 更新失敗
-                QMessageBox.critical(
-                    self.parent,
-                    "更新エラー",
-                    message
-                )
-        
-        downloader.finished.connect(on_finished)
-        
-        # キャンセルボタンの処理
-        progress.canceled.connect(downloader.terminate)
-        
-        # ダウンロード開始
-        downloader.start()
     
     def _is_newer_version(self, version1: str, version2: str) -> bool:
         """
