@@ -1,0 +1,29 @@
+{
+    "version":  "2.1.6",
+    "release_date":  "2025-06-04",
+    "download_url":  "https://github.com/SEI1026/Product_app/releases/download/v2.1.6/ProductRegisterTool-v2.1.6.zip",
+    "minimum_required_version":  "2.0.0",
+    "_comment_download_url":  "GitHub Releases URL for auto-update",
+    "_comment_company":  "Product Registration Tool by Daihokagu",
+    "changelog":  {
+                      "v2.1.3":  {
+                                     "release_date":  "2025-06-04",
+                                     "type":  "patch",
+                                     "features":  [
+                                                      "Complete automation system",
+                                                      "English filename support",
+                                                      "Enhanced error handling"
+                                                  ],
+                                     "improvements":  [
+                                                          "Build process optimization",
+                                                          "File encoding fixes",
+                                                          "GitHub integration"
+                                                      ],
+                                     "bug_fixes":  [
+                                                       "Character encoding issues",
+                                                       "File path problems",
+                                                       "PowerShell compatibility"
+                                                   ]
+                                 }
+                  }
+}
