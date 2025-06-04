@@ -74,9 +74,11 @@ class UpdateDownloader(QThread):
     def run(self):
         """更新ファイルをダウンロードして展開"""
         try:
-            # 一時ファイルを作成
-            with tempfile.NamedTemporaryFile(delete=False, suffix='.zip') as tmp:
-                self.temp_file = tmp.name
+            # 一時ディレクトリを使用（より安全）
+            temp_dir = tempfile.gettempdir()
+            self.temp_file = os.path.join(temp_dir, f'update_{os.getpid()}.zip')
+            
+            logging.info(f"一時ファイルパス: {self.temp_file}")
                 
             self.status.emit("更新ファイルをダウンロード中...")
             
@@ -265,29 +267,60 @@ class VersionChecker:
     
     def download_and_install_update(self, version_info: VersionInfo):
         """更新をダウンロードしてインストール"""
-        # プログレスダイアログを作成
-        progress = QProgressDialog("更新ファイルをダウンロード中...", "キャンセル", 0, 100, self.parent)
-        progress.setWindowTitle(f"商品登録入力ツール v{version_info.version} へのアップデート")
-        progress.setModal(True)
-        progress.setAutoClose(False)
-        progress.setMinimumDuration(0)  # すぐに表示
-        progress.setMinimumWidth(400)  # 幅を広げる
-        progress.show()
-        
-        # アプリケーションディレクトリを取得
-        if getattr(sys, 'frozen', False):
-            # PyInstallerでビルドされた場合
-            app_dir = os.path.dirname(sys.executable)
-        else:
-            # 開発環境の場合
-            app_dir = os.path.dirname(os.path.abspath(__file__))
-        
-        # ダウンローダースレッドを作成
-        downloader = UpdateDownloader(version_info.download_url, app_dir)
-        
-        # シグナルを接続
-        downloader.progress.connect(progress.setValue)
-        downloader.status.connect(progress.setLabelText)
+        try:
+            # プログレスダイアログを作成
+            progress = QProgressDialog("更新ファイルをダウンロード中...", "キャンセル", 0, 100, self.parent)
+            progress.setWindowTitle(f"商品登録入力ツール v{version_info.version} へのアップデート")
+            progress.setModal(True)
+            progress.setAutoClose(False)
+            progress.setMinimumDuration(0)  # すぐに表示
+            progress.setMinimumWidth(400)  # 幅を広げる
+            progress.show()
+            
+            # アプリケーションディレクトリを取得
+            if getattr(sys, 'frozen', False):
+                # PyInstallerでビルドされた場合
+                app_dir = os.path.dirname(sys.executable)
+            else:
+                # 開発環境の場合
+                app_dir = os.path.dirname(os.path.abspath(__file__))
+            
+            # 簡易的な更新方法：ブラウザでダウンロードページを開く
+            progress.close()
+            
+            import webbrowser
+            msg_box = QMessageBox(self.parent)
+            msg_box.setIcon(QMessageBox.Information)
+            msg_box.setWindowTitle("更新方法")
+            msg_box.setText(f"新しいバージョン {version_info.version} をダウンロードします。")
+            msg_box.setInformativeText(
+                "ブラウザでダウンロードページを開きます。\n"
+                "ダウンロード後、現在のアプリを終了してから\n"
+                "新しいバージョンをインストールしてください。"
+            )
+            msg_box.setStandardButtons(QMessageBox.Ok | QMessageBox.Cancel)
+            
+            if msg_box.exec_() == QMessageBox.Ok:
+                # GitHubリリースページを開く
+                release_url = version_info.download_url.rsplit('/', 2)[0]  # Get release page URL
+                webbrowser.open(release_url)
+                
+                QMessageBox.information(
+                    self.parent,
+                    "ダウンロード開始",
+                    "ブラウザでダウンロードページを開きました。\n"
+                    "ダウンロード完了後、このアプリを終了してから\n"
+                    "新しいバージョンをインストールしてください。"
+                )
+            return
+        except Exception as e:
+            logging.error(f"更新ダイアログ作成中にエラー: {e}")
+            QMessageBox.critical(
+                self.parent,
+                "更新エラー",
+                f"更新の準備中にエラーが発生しました:\n{str(e)}"
+            )
+            return
         
         def on_finished(success: bool, message: str):
             progress.close()
