@@ -19,7 +19,7 @@ from PyQt5.QtCore import QThread, pyqtSignal, QObject, QTimer
 from PyQt5.QtWidgets import QMessageBox, QProgressDialog, QPushButton, QApplication
 
 # 現在のアプリケーションバージョン
-CURRENT_VERSION = "2.4.0"
+CURRENT_VERSION = "2.4.1"
 
 # GitHub上のversion.jsonのURL
 # 株式会社大宝家具の商品登録入力ツール
@@ -525,6 +525,15 @@ class UpdateDownloader(QThread):
             updated_exe = False
             
             logging.info(f"ファイル更新開始: {source_dir} -> {target_dir}")
+            
+            # ソースディレクトリの構造をログ出力
+            logging.info("=== ソースディレクトリ構造 ===")
+            for root, dirs, files in os.walk(source_dir):
+                rel_path = os.path.relpath(root, source_dir)
+                logging.info(f"ディレクトリ: {rel_path} (ファイル数: {len(files)})")
+                if dirs:
+                    logging.info(f"  サブディレクトリ: {dirs}")
+            logging.info("=== 構造確認完了 ===")
             
             # ユーザーデータファイル（保護対象）のパターン
             protected_patterns = [
@@ -1198,11 +1207,22 @@ class VersionChecker:
     def _create_restart_script(self):
         """再起動用のスクリプトを作成（安全なプロセス終了）"""
         if sys.platform == 'win32':
-            # Windowsの場合
-            exe_path = sys.executable
+            # 実際のアプリケーションパスを取得
+            app_dir = self._detect_application_directory()
+            
+            # 実行可能ファイルのパスを正しく取得
+            if getattr(sys, 'frozen', False):
+                # PyInstallerでビルドされた場合
+                exe_path = os.path.join(app_dir, '商品登録入力ツール.exe')
+            else:
+                # 開発環境の場合
+                exe_path = sys.executable
+                
             exe_dir = os.path.dirname(exe_path)
             exe_name = os.path.basename(exe_path)
-            script_path = os.path.join(exe_dir, 'update_restart.bat')
+            script_path = os.path.join(app_dir, 'update_restart.bat')
+            
+            logging.info(f"再起動スクリプト作成: exe_path={exe_path}, script_path={script_path}")
             
             # 現在のプロセスIDを取得
             current_pid = os.getpid()
@@ -1233,10 +1253,15 @@ goto wait_exit
 echo プロセス終了を確認しました
 timeout /t 1 /nobreak > nul
 
+echo 更新ファイル確認中...
+echo 対象exeファイル: {exe_path}
+echo .newファイル: {exe_path}.new
+
 :retry
 if exist "{exe_path}.new" (
+    echo .newファイルが存在します
     echo ファイルを置換しています...
-    move /y "{exe_path}.new" "{exe_path}" >nul 2>&1
+    move /y "{exe_path}.new" "{exe_path}"
     if errorlevel 1 (
         echo ファイルの置換に失敗しました。再試行します...
         timeout /t 2 /nobreak > nul
@@ -1244,18 +1269,22 @@ if exist "{exe_path}.new" (
     )
     echo ファイル置換完了
 ) else (
-    echo 更新ファイル(.new)が見つかりません
+    echo 警告: 更新ファイル(.new)が見つかりません
+    echo パス: {exe_path}.new
+    dir "{exe_dir}\\*.new" /b 2>nul
 )
 
 echo 更新が完了しました。アプリケーションを起動します...
+echo 起動パス: {exe_path}
 timeout /t 1 /nobreak > nul
 start "" "{exe_path}"
+echo 再起動スクリプトを削除します
 del "%~f0"
 ''')
             
-            # バッチファイルを実行（コンソールを隠す）
+            # バッチファイルを実行（デバッグのためコンソール表示）
             subprocess.Popen(['cmd', '/c', script_path], 
-                           creationflags=subprocess.CREATE_NO_WINDOW)
+                           creationflags=subprocess.CREATE_NEW_CONSOLE)
             
             # 現在のアプリケーションを優雅に終了
             QApplication.quit()
