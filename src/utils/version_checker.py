@@ -587,40 +587,29 @@ class UpdateDownloader(QThread):
                             except Exception as copy_error:
                                 # その他のエラーは即座に失敗
                                 raise copy_error
-                            
-                            # キャンセルチェック（コピー後）
-                            if self._cancelled:
-                                logging.info(f"ファイルコピー後にキャンセル: {file}")
-                                # 中途半端なファイルを削除
-                                if os.path.exists(target_file):
-                                    try:
-                                        os.remove(target_file)
-                                        logging.info(f"中途半端なファイルを削除: {target_file}")
-                                    except Exception as e:
-                                        logging.warning(f"中途半端ファイル削除エラー: {e}")
-                                return
-                            
-                            # コピー後のサイズ確認
-                            if os.path.exists(target_file):
-                                target_size = os.path.getsize(target_file)
-                                if source_size != target_size:
-                                    logging.error(f"ファイルサイズ不一致: {file} - 期待値:{source_size} 実際:{target_size}")
-                                    raise Exception(f"ファイルサイズ不一致: {source_size} != {target_size}")
-                                    
-                                logging.info(f"ファイルコピー完了: {file} ({source_size} bytes)")
-                            else:
-                                raise Exception(f"コピー後にファイルが存在しません: {target_file}")
-                            
-                        except Exception as copy_error:
-                            logging.error(f"ファイルコピーエラー {file}: {copy_error}")
-                            # 失敗したファイルがあれば削除
+                        
+                        # キャンセルチェック（コピー後）
+                        if self._cancelled:
+                            logging.info(f"ファイルコピー後にキャンセル: {file}")
+                            # 中途半端なファイルを削除
                             if os.path.exists(target_file):
                                 try:
                                     os.remove(target_file)
-                                    logging.info(f"失敗したファイルを削除: {target_file}")
-                                except Exception as cleanup_e:
-                                    logging.warning(f"失敗ファイル削除エラー: {cleanup_e}")
-                            raise copy_error
+                                    logging.info(f"中途半端なファイルを削除: {target_file}")
+                                except Exception as e:
+                                    logging.warning(f"中途半端ファイル削除エラー: {e}")
+                            return
+                        
+                        # コピー後のサイズ確認
+                        if os.path.exists(target_file):
+                            target_size = os.path.getsize(target_file)
+                            if source_size != target_size:
+                                logging.error(f"ファイルサイズ不一致: {file} - 期待値:{source_size} 実際:{target_size}")
+                                raise Exception(f"ファイルサイズ不一致: {source_size} != {target_size}")
+                                
+                            logging.info(f"ファイルコピー完了: {file} ({source_size} bytes)")
+                        else:
+                            raise Exception(f"コピー後にファイルが存在しません: {target_file}")
                     
                     except Exception as file_error:
                         logging.error(f"ファイル処理エラー {file}: {file_error}")
