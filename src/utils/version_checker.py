@@ -297,6 +297,57 @@ class UpdateDownloader(QThread):
         except Exception as e:
             logging.error(f"部分ファイルクリーンアップエラー: {e}")
     
+    def _copy_large_file(self, source_file: str, target_file: str, file_size: int):
+        """大きなファイルを安全にコピー（チャンク方式）"""
+        try:
+            logging.info(f"大きなファイルのチャンクコピー開始: {source_file} -> {target_file} ({file_size} bytes)")
+            
+            chunk_size = 1024 * 1024  # 1MBずつコピー
+            copied = 0
+            
+            with open(source_file, 'rb') as src, open(target_file, 'wb') as dst:
+                while copied < file_size:
+                    if self._cancelled:
+                        logging.info("大きなファイルコピー中にキャンセルされました")
+                        return False
+                    
+                    # チャンクサイズを調整（残りサイズが小さい場合）
+                    current_chunk_size = min(chunk_size, file_size - copied)
+                    chunk = src.read(current_chunk_size)
+                    
+                    if not chunk:
+                        break
+                    
+                    dst.write(chunk)
+                    copied += len(chunk)
+                    
+                    # 進捗更新（5%刻み）
+                    progress = int((copied / file_size) * 100)
+                    if progress % 5 == 0:
+                        self.status.emit(f"大きなファイルをコピー中: {progress}% ({copied/1024/1024:.1f}MB/{file_size/1024/1024:.1f}MB)")
+                    
+                    # 少し待機してCPU負荷を軽減
+                    import time
+                    time.sleep(0.001)  # 1ms待機
+            
+            # コピー完了確認
+            if copied != file_size:
+                raise Exception(f"ファイルコピーが不完全: {copied}/{file_size} bytes")
+            
+            logging.info(f"大きなファイルのチャンクコピー完了: {copied} bytes")
+            return True
+            
+        except Exception as e:
+            logging.error(f"大きなファイルコピーエラー: {e}")
+            # 失敗した場合は部分ファイルを削除
+            if os.path.exists(target_file):
+                try:
+                    os.remove(target_file)
+                    logging.info(f"失敗した大きなファイルを削除: {target_file}")
+                except:
+                    pass
+            raise
+    
     def terminate(self):
         """ダウンロードをキャンセル"""
         logging.info("アップデートダウンロードのキャンセルが要求されました")
@@ -393,24 +444,55 @@ class UpdateDownloader(QThread):
                                 logging.info(f"開発環境ファイル更新: {file}")
                         
                         # ファイルをコピー
-                        try:
-                            # ファイルサイズ確認
-                            source_size = os.path.getsize(source_file)
-                            if source_size == 0:
-                                logging.warning(f"ソースファイルのサイズが0: {source_file}")
-                            
-                            # 大きなファイルの場合は進捗表示
-                            if source_size > 1024 * 1024:  # 1MB以上
-                                self.status.emit(f"大きなファイルをコピー中: {file} ({source_size/1024/1024:.1f}MB)")
-                                logging.info(f"大きなファイルのコピー開始: {file} ({source_size} bytes)")
-                            
-                            # キャンセルチェック
-                            if self._cancelled:
-                                logging.info(f"ファイルコピー前にキャンセル: {file}")
-                                return
-                            
-                            # ファイルコピー実行
-                            shutil.copy2(source_file, target_file)
+                        retry_count = 0
+                        max_retries = 3
+                        
+                        while retry_count < max_retries:
+                            try:
+                                # ファイルサイズ確認
+                                source_size = os.path.getsize(source_file)
+                                if source_size == 0:
+                                    logging.warning(f"ソースファイルのサイズが0: {source_file}")
+                                
+                                # 大きなファイルの場合は進捗表示
+                                if source_size > 1024 * 1024:  # 1MB以上
+                                    self.status.emit(f"大きなファイルをコピー中: {file} ({source_size/1024/1024:.1f}MB)")
+                                    logging.info(f"大きなファイルのコピー開始: {file} ({source_size} bytes)")
+                                
+                                # キャンセルチェック
+                                if self._cancelled:
+                                    logging.info(f"ファイルコピー前にキャンセル: {file}")
+                                    return
+                                
+                                # リトライ表示
+                                if retry_count > 0:
+                                    self.status.emit(f"ファイルコピー再試行中 ({retry_count+1}/{max_retries}): {file}")
+                                    logging.info(f"ファイルコピー再試行 {retry_count+1}/{max_retries}: {file}")
+                                
+                                # ファイルコピー実行（チャンク方式で安全にコピー）
+                                if source_size > 10 * 1024 * 1024:  # 10MB以上の大きなファイル
+                                    self._copy_large_file(source_file, target_file, source_size)
+                                else:
+                                    shutil.copy2(source_file, target_file)
+                                
+                                # コピー成功した場合はループを抜ける
+                                break
+                                
+                            except (PermissionError, OSError) as copy_error:
+                                retry_count += 1
+                                if retry_count < max_retries:
+                                    # リトライ前に少し待機
+                                    import time
+                                    wait_time = retry_count * 2  # 2秒、4秒と増加
+                                    logging.warning(f"ファイルコピーエラー（{retry_count}/{max_retries}）: {copy_error}")
+                                    logging.info(f"{wait_time}秒待機してリトライします...")
+                                    time.sleep(wait_time)
+                                else:
+                                    # 最大リトライ回数に達した場合
+                                    raise copy_error
+                            except Exception as copy_error:
+                                # その他のエラーは即座に失敗
+                                raise copy_error
                             
                             # キャンセルチェック（コピー後）
                             if self._cancelled:
