@@ -19,7 +19,7 @@ from PyQt5.QtCore import QThread, pyqtSignal, QObject
 from PyQt5.QtWidgets import QMessageBox, QProgressDialog, QPushButton, QApplication
 
 # 現在のアプリケーションバージョン
-CURRENT_VERSION = "2.3.2"
+CURRENT_VERSION = "2.3.3"
 
 # GitHub上のversion.jsonのURL
 # 株式会社大宝家具の商品登録入力ツール
@@ -912,7 +912,16 @@ class VersionChecker:
             # アプリケーションディレクトリを取得
             if getattr(sys, 'frozen', False):
                 # PyInstallerでビルドされた場合
-                app_dir = os.path.dirname(sys.executable)
+                # sys.executableではなく、実際の実行ファイルの場所を使用
+                app_dir = os.getcwd()  # 作業ディレクトリを使用
+                
+                # 実行ファイルがある場所を確実に特定
+                if hasattr(sys, '_MEIPASS'):
+                    # PyInstallerの一時ディレクトリの場合、実際のexeの場所を取得
+                    actual_exe = sys.argv[0] if sys.argv[0].endswith('.exe') else sys.executable
+                    app_dir = os.path.dirname(os.path.abspath(actual_exe))
+                else:
+                    app_dir = os.path.dirname(sys.executable)
             else:
                 # 開発環境の場合
                 app_dir = os.path.dirname(os.path.abspath(__file__))
