@@ -19,7 +19,7 @@ from PyQt5.QtCore import QThread, pyqtSignal, QObject, QTimer
 from PyQt5.QtWidgets import QMessageBox, QProgressDialog, QPushButton, QApplication
 
 # 現在のアプリケーションバージョン
-CURRENT_VERSION = "2.3.8"
+CURRENT_VERSION = "2.3.9"
 
 # GitHub上のversion.jsonのURL
 # 株式会社大宝家具の商品登録入力ツール
@@ -760,6 +760,56 @@ class UpdateDownloader(QThread):
         except Exception as e:
             logging.error(f"バックアップ作成エラー: {e}")
             return False
+    
+    def _find_actual_source_directory(self, extract_dir: str) -> str:
+        """展開されたZIPファイル内から実際の更新ファイルがあるディレクトリを特定"""
+        try:
+            logging.info(f"ソースディレクトリ検索開始: {extract_dir}")
+            
+            # まず展開されたディレクトリの構造を確認
+            for root, dirs, files in os.walk(extract_dir):
+                logging.debug(f"検索中: {root}, ディレクトリ: {dirs}, ファイル: {files[:5]}...")  # 最初の5ファイルのみ表示
+                
+                # 重要なファイルの存在をチェック
+                important_files = [
+                    'product_app.py',
+                    '商品登録入力ツール.exe',
+                    'constants.py',
+                    'version.json'
+                ]
+                
+                found_files = 0
+                for important_file in important_files:
+                    if important_file in files:
+                        found_files += 1
+                
+                # 重要なファイルが2つ以上見つかった場合、そのディレクトリを使用
+                if found_files >= 2:
+                    logging.info(f"適切なソースディレクトリを発見: {root} (重要ファイル: {found_files}個)")
+                    return root
+            
+            # 重要ファイルが見つからない場合、最初のサブディレクトリを確認
+            subdirs = [d for d in os.listdir(extract_dir) if os.path.isdir(os.path.join(extract_dir, d))]
+            if subdirs:
+                # ProductRegisterTool で始まるディレクトリを優先
+                for subdir in subdirs:
+                    if subdir.startswith('ProductRegisterTool'):
+                        subdir_path = os.path.join(extract_dir, subdir)
+                        logging.info(f"ProductRegisterToolディレクトリを使用: {subdir_path}")
+                        return subdir_path
+                
+                # それがない場合は最初のサブディレクトリ
+                first_subdir = os.path.join(extract_dir, subdirs[0])
+                logging.info(f"最初のサブディレクトリを使用: {first_subdir}")
+                return first_subdir
+            
+            # フォールバック: extract_dir自体を使用
+            logging.info(f"フォールバック: extract_dir自体を使用: {extract_dir}")
+            return extract_dir
+            
+        except Exception as e:
+            logging.error(f"ソースディレクトリ検索エラー: {e}")
+            return extract_dir
 
 
 class VersionChecker:
@@ -1316,6 +1366,7 @@ rm -f "$0"
             
             # 方法2: 現在の作業ディレクトリをチェック
             cwd = os.getcwd()
+            logging.info(f"現在の作業ディレクトリ: {cwd}")
             if os.path.exists(os.path.join(cwd, 'product_app.py')) or os.path.exists(os.path.join(cwd, '商品登録入力ツール.exe')):
                 logging.info(f"方法2でディレクトリ検出: {cwd}")
                 return cwd
@@ -1347,55 +1398,6 @@ rm -f "$0"
             logging.error(f"アプリケーションディレクトリ検出エラー: {e}")
             return os.getcwd()
     
-    def _find_actual_source_directory(self, extract_dir: str) -> str:
-        """展開されたZIPファイル内から実際の更新ファイルがあるディレクトリを特定"""
-        try:
-            logging.info(f"ソースディレクトリ検索開始: {extract_dir}")
-            
-            # まず展開されたディレクトリの構造を確認
-            for root, dirs, files in os.walk(extract_dir):
-                logging.debug(f"検索中: {root}, ディレクトリ: {dirs}, ファイル: {files[:5]}...")  # 最初の5ファイルのみ表示
-                
-                # 重要なファイルの存在をチェック
-                important_files = [
-                    'product_app.py',
-                    '商品登録入力ツール.exe',
-                    'constants.py',
-                    'version.json'
-                ]
-                
-                found_files = 0
-                for important_file in important_files:
-                    if important_file in files:
-                        found_files += 1
-                
-                # 重要なファイルが2つ以上見つかった場合、そのディレクトリを使用
-                if found_files >= 2:
-                    logging.info(f"適切なソースディレクトリを発見: {root} (重要ファイル: {found_files}個)")
-                    return root
-            
-            # 重要ファイルが見つからない場合、最初のサブディレクトリを確認
-            subdirs = [d for d in os.listdir(extract_dir) if os.path.isdir(os.path.join(extract_dir, d))]
-            if subdirs:
-                # ProductRegisterTool で始まるディレクトリを優先
-                for subdir in subdirs:
-                    if subdir.startswith('ProductRegisterTool'):
-                        subdir_path = os.path.join(extract_dir, subdir)
-                        logging.info(f"ProductRegisterToolディレクトリを使用: {subdir_path}")
-                        return subdir_path
-                
-                # それがない場合は最初のサブディレクトリ
-                first_subdir = os.path.join(extract_dir, subdirs[0])
-                logging.info(f"最初のサブディレクトリを使用: {first_subdir}")
-                return first_subdir
-            
-            # フォールバック: extract_dir自体を使用
-            logging.info(f"フォールバック: extract_dir自体を使用: {extract_dir}")
-            return extract_dir
-            
-        except Exception as e:
-            logging.error(f"ソースディレクトリ検索エラー: {e}")
-            return extract_dir
 
 
 def check_for_updates_on_startup(parent=None):
