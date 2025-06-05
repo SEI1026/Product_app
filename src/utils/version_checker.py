@@ -996,17 +996,36 @@ class VersionChecker:
                 
                 # 完了時の処理
                 def on_finished(success: bool, message: str):
+                    completion_log = None
                     try:
+                        # 成功時専用のログファイルも作成
+                        completion_log = os.path.join(tempfile.gettempdir(), f"update_completion_{os.getpid()}.txt")
+                        
+                        def write_completion_log(msg):
+                            try:
+                                import datetime
+                                with open(completion_log, 'a', encoding='utf-8') as f:
+                                    f.write(f"{datetime.datetime.now().strftime('%H:%M:%S')}: {msg}\n")
+                                    f.flush()
+                            except:
+                                pass
+                        
+                        write_completion_log(f"完了コールバック開始: success={success}, message={message}")
                         logging.info(f"更新完了コールバック: success={success}, message={message}")
                         
                         # プログレスダイアログを閉じる
+                        write_completion_log("プログレスダイアログクローズ開始")
                         if progress and not progress.wasCanceled():
                             progress.close()
                             logging.info("プログレスダイアログを閉じました")
+                            write_completion_log("プログレスダイアログクローズ完了")
                         
                         if success and not downloader._cancelled:
                             # 更新成功
+                            write_completion_log("更新成功 - 再起動確認ダイアログ表示準備")
                             logging.info("更新成功 - 再起動確認ダイアログ表示")
+                            
+                            write_completion_log("QMessageBox.question呼び出し開始")
                             reply = QMessageBox.question(
                                 self.parent,
                                 "更新完了",
@@ -1014,12 +1033,16 @@ class VersionChecker:
                                 QMessageBox.Yes | QMessageBox.No,
                                 QMessageBox.Yes
                             )
+                            write_completion_log(f"QMessageBox.question完了: reply={reply}")
                             
                             if reply == QMessageBox.Yes:
                                 try:
+                                    write_completion_log("再起動スクリプト実行開始")
                                     logging.info("再起動スクリプト実行")
                                     self._create_restart_script()
+                                    write_completion_log("再起動スクリプト実行完了")
                                 except Exception as e:
+                                    write_completion_log(f"再起動エラー: {e}")
                                     logging.error(f"再起動エラー: {e}")
                                     QMessageBox.warning(
                                         self.parent,
@@ -1027,11 +1050,13 @@ class VersionChecker:
                                         "手動でアプリケーションを再起動してください。"
                                     )
                             else:
+                                write_completion_log("次回起動時適用選択")
                                 QMessageBox.information(
                                     self.parent,
                                     "更新予定",
                                     "更新は次回起動時に適用されます。"
                                 )
+                            write_completion_log("成功処理完了")
                         elif not downloader._cancelled:
                             # 更新失敗（キャンセルでない場合のみエラー表示）
                             logging.error(f"更新失敗: {message}")
@@ -1069,13 +1094,33 @@ class VersionChecker:
                             logging.info("更新がキャンセルされました")
                             
                     except Exception as e:
-                        logging.error(f"更新完了処理エラー: {e}", exc_info=True)
+                        # 完了処理でのエラーを詳細に記録
+                        error_msg = f"更新完了処理エラー: {e}"
+                        logging.error(error_msg, exc_info=True)
+                        
+                        # 完了ログにエラーを記録
+                        if completion_log:
+                            try:
+                                with open(completion_log, 'a', encoding='utf-8') as f:
+                                    f.write(f"FATAL ERROR: {error_msg}\n")
+                                    import traceback
+                                    f.write(f"Traceback:\n{traceback.format_exc()}\n")
+                                    f.flush()
+                                
+                                # デスクトップにもコピー
+                                desktop_completion_log = os.path.join(os.path.expanduser("~"), "Desktop", f"update_completion_error_{os.getpid()}.txt")
+                                import shutil
+                                shutil.copy2(completion_log, desktop_completion_log)
+                            except:
+                                pass
+                        
                         # エラーの場合でもユーザーに通知
                         try:
                             QMessageBox.critical(
                                 self.parent,
                                 "更新処理エラー",
-                                f"更新の完了処理中にエラーが発生しました:\n{e}"
+                                f"更新の完了処理中にエラーが発生しました:\n{e}\n\n"
+                                f"詳細ログ: {completion_log if completion_log else '利用不可'}"
                             )
                         except:
                             pass
