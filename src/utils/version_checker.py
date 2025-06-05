@@ -19,7 +19,7 @@ from PyQt5.QtCore import QThread, pyqtSignal, QObject, QTimer
 from PyQt5.QtWidgets import QMessageBox, QProgressDialog, QPushButton, QApplication
 
 # 現在のアプリケーションバージョン
-CURRENT_VERSION = "2.4.2"
+CURRENT_VERSION = "2.4.3"
 
 # GitHub上のversion.jsonのURL
 # 株式会社大宝家具の商品登録入力ツール
@@ -520,11 +520,19 @@ class UpdateDownloader(QThread):
     def _update_files(self, source_dir: str, target_dir: str):
         """ファイルを更新（実行中のファイルは.newとして保存、ユーザーデータは保護）"""
         try:
-            current_exe = os.path.abspath(sys.executable)
+            # 実際の実行ファイルパスを取得
+            if getattr(sys, 'frozen', False):
+                # PyInstallerでビルドされた場合
+                current_exe = os.path.join(target_dir, '商品登録入力ツール.exe')
+            else:
+                current_exe = os.path.abspath(sys.executable)
+                
             current_exe_name = os.path.basename(current_exe)
             updated_exe = False
             
             logging.info(f"ファイル更新開始: {source_dir} -> {target_dir}")
+            logging.info(f"現在の実行ファイル: {current_exe}")
+            logging.info(f"実行ファイル名: {current_exe_name}")
             
             # ソースディレクトリの構造をログ出力
             logging.info("=== ソースディレクトリ構造 ===")
@@ -564,11 +572,15 @@ class UpdateDownloader(QThread):
                 rel_path = os.path.relpath(root, source_dir)
                 target_root = os.path.join(target_dir, rel_path) if rel_path != '.' else target_dir
                 
+                # ディレクトリマッピングをログ出力
+                if rel_path != '.':
+                    logging.info(f"ディレクトリマッピング: {rel_path} -> {target_root}")
+                
                 # ディレクトリを作成
                 try:
-                    if not os.path.exists(target_root):
+                    if not os.path.exists(target_root) and rel_path != '.':
                         os.makedirs(target_root, exist_ok=True)
-                        logging.debug(f"ディレクトリ作成: {target_root}")
+                        logging.info(f"ディレクトリ作成: {target_root}")
                 except Exception as e:
                     logging.error(f"ディレクトリ作成エラー {target_root}: {e}")
                     raise
@@ -595,13 +607,13 @@ class UpdateDownloader(QThread):
                         
                         # PyInstallerでビルドされたexeファイルの更新
                         if getattr(sys, 'frozen', False):
-                            # 実行ファイル名と一致する場合（商品登録ツール.exe など）
-                            if file.lower() == current_exe_name.lower() or file.lower().endswith('.exe'):
+                            # 商品登録入力ツール.exe の場合
+                            if file == '商品登録入力ツール.exe':
                                 # 実行中のexeファイルは.newとして保存
-                                target_file = current_exe + '.new'
+                                target_file = os.path.join(target_dir, '商品登録入力ツール.exe.new')
                                 updated_exe = True
                                 self.status.emit(f"実行ファイルを更新中: {file}")
-                                logging.info(f"実行ファイル更新: {file} -> {target_file}")
+                                logging.info(f"実行ファイル更新: {source_file} -> {target_file}")
                         else:
                             # 開発環境の場合、実行中のスクリプトと同じ場合
                             if os.path.abspath(target_file) == current_exe:
@@ -680,6 +692,8 @@ class UpdateDownloader(QThread):
                                 raise Exception(f"ファイルサイズ不一致: {source_size} != {target_size}")
                                 
                             logging.info(f"ファイルコピー完了: {file} ({source_size} bytes)")
+                            logging.info(f"  コピー元: {source_file}")
+                            logging.info(f"  コピー先: {target_file}")
                         else:
                             raise Exception(f"コピー後にファイルが存在しません: {target_file}")
                     
@@ -689,6 +703,13 @@ class UpdateDownloader(QThread):
                         raise file_error
         
             logging.info(f"ファイル更新完了: {file_count}個のファイルを処理")
+            
+            # .newファイルの存在確認
+            new_exe_path = os.path.join(target_dir, '商品登録入力ツール.exe.new')
+            if os.path.exists(new_exe_path):
+                logging.info(f"✅ .newファイル確認: {new_exe_path} (サイズ: {os.path.getsize(new_exe_path)} bytes)")
+            else:
+                logging.warning(f"⚠️ .newファイルが見つかりません: {new_exe_path}")
             
             if not updated_exe and getattr(sys, 'frozen', False):
                 # exeファイルが見つからなかった場合の警告
@@ -1283,8 +1304,9 @@ del "%~f0"
 ''')
             
             # バッチファイルを実行（デバッグのためコンソール表示）
+            # CREATE_NEW_CONSOLE = 0x00000010
             subprocess.Popen(['cmd', '/c', script_path], 
-                           creationflags=subprocess.CREATE_NEW_CONSOLE)
+                           creationflags=0x00000010)
             
             # 現在のアプリケーションを優雅に終了
             QApplication.quit()
