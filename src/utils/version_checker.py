@@ -79,39 +79,52 @@ class UpdateDownloader(QThread):
         
     def run(self):
         """更新ファイルをダウンロードして展開"""
+        step = "初期化"
         try:
+            logging.info("=== 自動更新プロセス開始 ===")
+            step = "キャンセルチェック"
             if self._cancelled:
                 logging.info("ダウンロード開始前にキャンセルされました")
                 return
                 
             # 一時ファイル作成
+            step = "一時ファイル作成"
             temp_dir = tempfile.gettempdir()
             self.temp_file = os.path.join(temp_dir, f'update_{os.getpid()}.zip')
+            logging.info(f"一時ファイル: {self.temp_file}")
             
+            step = "URL検証"
             logging.info(f"ダウンロード開始: {self.download_url}")
             
             # URL検証
             if not self.download_url or not self.download_url.startswith('https://'):
+                logging.error(f"無効なダウンロードURL: {self.download_url}")
                 self.finished.emit(False, "無効なダウンロードURLです")
                 return
                 
             # ダウンロード
+            step = "ダウンロード"
             self.status.emit("更新ファイルをダウンロード中...")
+            logging.info("ダウンロード処理開始")
             success = self._download_file()
             
             if not success or self._cancelled:
-                logging.info("ダウンロードがキャンセルまたは失敗しました")
+                logging.warning("ダウンロードがキャンセルまたは失敗しました")
                 return
                 
             # 展開
+            step = "ZIP展開"
             self.status.emit("更新ファイルを展開中...")
+            logging.info("ZIP展開処理開始")
             self.extract_dir = self._extract_zip()
+            logging.info(f"展開完了: {self.extract_dir}")
             
             if self._cancelled:
                 logging.info("展開後にキャンセルされました") 
                 return
                 
             # ファイル更新
+            step = "ファイル更新"
             self.status.emit("ファイルを更新中...")
             logging.info(f"ファイル更新開始: extract_dir={self.extract_dir}, target_dir={self.target_dir}")
             
@@ -120,27 +133,29 @@ class UpdateDownloader(QThread):
                 logging.info("ファイル更新が正常に完了しました")
             except Exception as update_error:
                 logging.error(f"ファイル更新中にエラーが発生: {update_error}", exc_info=True)
-                self.finished.emit(False, f"ファイル更新エラー: {update_error}")
+                self.finished.emit(False, f"ファイル更新エラー（{step}）: {update_error}")
                 return
             
+            step = "完了処理"
             if not self._cancelled:
+                logging.info("更新処理が完全に完了 - 成功シグナル送信")
                 self.finished.emit(True, "更新が正常に完了しました")
                 logging.info("更新処理が完全に完了しました")
             
         except urllib.error.URLError as e:
-            error_msg = f"ネットワークエラー: {e}"
+            error_msg = f"ネットワークエラー（{step}）: {e}"
             logging.error(error_msg)
             self.finished.emit(False, error_msg)
         except zipfile.BadZipFile as e:
-            error_msg = f"ZIPファイルエラー: {e}"
+            error_msg = f"ZIPファイルエラー（{step}）: {e}"
             logging.error(error_msg) 
             self.finished.emit(False, error_msg)
         except PermissionError as e:
-            error_msg = f"ファイルアクセスエラー: {e}"
+            error_msg = f"ファイルアクセスエラー（{step}）: {e}"
             logging.error(error_msg)
             self.finished.emit(False, error_msg)
         except Exception as e:
-            error_msg = f"予期しないエラー: {e}"
+            error_msg = f"予期しないエラー（{step}）: {e}"
             logging.error(f"更新エラー: {error_msg}", exc_info=True)
             self.finished.emit(False, error_msg)
             
@@ -702,29 +717,44 @@ class VersionChecker:
                 progress.close()
                 return
             elif clicked_button == manual_btn:
-                # 手動ダウンロード（従来の方法）
+                # 手動ダウンロード（直接ダウンロードURL）
                 progress.close()
                 import webbrowser
                 
-                # GitHubリリースページを開く
-                download_url_parts = version_info.download_url.split('/')
-                if len(download_url_parts) >= 8 and download_url_parts[5] == 'releases':
-                    tag_name = download_url_parts[7]  # v2.1.7
-                    repo_path = '/'.join(download_url_parts[:5])  # https://github.com/SEI1026/Product_app
-                    release_url = f"{repo_path}/releases/tag/{tag_name}"
+                # 直接ダウンロードURLを開く
+                if version_info.download_url and version_info.download_url.startswith('https://'):
+                    # 直接ダウンロードURLをブラウザで開く
+                    webbrowser.open(version_info.download_url)
+                    
+                    QMessageBox.information(
+                        self.parent,
+                        "ダウンロード開始",
+                        f"ブラウザで直接ダウンロードを開始しました。\n\n"
+                        f"ダウンロードファイル: ProductRegisterTool-v{version_info.version}.zip\n\n"
+                        f"ダウンロード完了後:\n"
+                        f"1. このアプリを終了\n"
+                        f"2. ZIPファイルを適当なフォルダに解凍\n"
+                        f"3. 新しいバージョンを起動"
+                    )
                 else:
-                    # フォールバック: リリース一覧ページ
-                    release_url = version_info.download_url.rsplit('/releases/', 1)[0] + '/releases'
-                
-                webbrowser.open(release_url)
-                
-                QMessageBox.information(
-                    self.parent,
-                    "ダウンロード開始",
-                    "ブラウザでダウンロードページを開きました。\n"
-                    "ダウンロード完了後、このアプリを終了してから\n"
-                    "新しいバージョンをインストールしてください。"
-                )
+                    # フォールバック: リリースページを開く
+                    download_url_parts = version_info.download_url.split('/')
+                    if len(download_url_parts) >= 8 and download_url_parts[5] == 'releases':
+                        tag_name = download_url_parts[7]  # v2.2.6
+                        repo_path = '/'.join(download_url_parts[:5])  # https://github.com/SEI1026/Product_app
+                        release_url = f"{repo_path}/releases/tag/{tag_name}"
+                    else:
+                        # 最終フォールバック: リリース一覧ページ
+                        release_url = "https://github.com/SEI1026/Product_app/releases"
+                    
+                    webbrowser.open(release_url)
+                    
+                    QMessageBox.information(
+                        self.parent,
+                        "ダウンロードページ",
+                        "ブラウザでリリースページを開きました。\n"
+                        "手動でZIPファイルをダウンロードしてください。"
+                    )
                 return
             else:
                 # 自動ダウンロード（新機能）
