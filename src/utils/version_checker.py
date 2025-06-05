@@ -80,11 +80,20 @@ class UpdateDownloader(QThread):
     def run(self):
         """更新ファイルをダウンロードして展開"""
         step = "初期化"
+        crash_log_file = None
+        
         try:
+            # クラッシュログファイルを作成
+            import tempfile
+            crash_log_file = os.path.join(tempfile.gettempdir(), f"update_crash_log_{os.getpid()}.txt")
+            
             logging.info("=== 自動更新プロセス開始 ===")
+            self._write_crash_log(crash_log_file, f"=== 自動更新プロセス開始 ===\n開始時刻: {self._get_timestamp()}\n")
+            
             step = "キャンセルチェック"
             if self._cancelled:
                 logging.info("ダウンロード開始前にキャンセルされました")
+                self._write_crash_log(crash_log_file, f"ステップ: {step} - キャンセルされました\n")
                 return
                 
             # 一時ファイル作成
@@ -92,13 +101,17 @@ class UpdateDownloader(QThread):
             temp_dir = tempfile.gettempdir()
             self.temp_file = os.path.join(temp_dir, f'update_{os.getpid()}.zip')
             logging.info(f"一時ファイル: {self.temp_file}")
+            self._write_crash_log(crash_log_file, f"ステップ: {step} - 一時ファイル: {self.temp_file}\n")
             
             step = "URL検証"
             logging.info(f"ダウンロード開始: {self.download_url}")
+            self._write_crash_log(crash_log_file, f"ステップ: {step} - URL: {self.download_url}\n")
             
             # URL検証
             if not self.download_url or not self.download_url.startswith('https://'):
-                logging.error(f"無効なダウンロードURL: {self.download_url}")
+                error_msg = f"無効なダウンロードURL: {self.download_url}"
+                logging.error(error_msg)
+                self._write_crash_log(crash_log_file, f"エラー: {error_msg}\n")
                 self.finished.emit(False, "無効なダウンロードURLです")
                 return
                 
@@ -106,27 +119,36 @@ class UpdateDownloader(QThread):
             step = "ダウンロード"
             self.status.emit("更新ファイルをダウンロード中...")
             logging.info("ダウンロード処理開始")
+            self._write_crash_log(crash_log_file, f"ステップ: {step} - ダウンロード開始\n")
             success = self._download_file()
             
             if not success or self._cancelled:
-                logging.warning("ダウンロードがキャンセルまたは失敗しました")
+                error_msg = "ダウンロードがキャンセルまたは失敗しました"
+                logging.warning(error_msg)
+                self._write_crash_log(crash_log_file, f"エラー: {error_msg}\n")
                 return
                 
             # 展開
             step = "ZIP展開"
             self.status.emit("更新ファイルを展開中...")
             logging.info("ZIP展開処理開始")
+            self._write_crash_log(crash_log_file, f"ステップ: {step} - ZIP展開開始\n")
             self.extract_dir = self._extract_zip()
             logging.info(f"展開完了: {self.extract_dir}")
+            self._write_crash_log(crash_log_file, f"展開完了: {self.extract_dir}\n")
             
             if self._cancelled:
                 logging.info("展開後にキャンセルされました") 
+                self._write_crash_log(crash_log_file, f"ステップ: {step} - キャンセルされました\n")
                 return
                 
             # ファイル更新
             step = "ファイル更新"
             self.status.emit("ファイルを更新中...")
             logging.info(f"ファイル更新開始: extract_dir={self.extract_dir}, target_dir={self.target_dir}")
+            self._write_crash_log(crash_log_file, f"ステップ: {step} - ファイル更新開始\n")
+            self._write_crash_log(crash_log_file, f"展開ディレクトリ: {self.extract_dir}\n")
+            self._write_crash_log(crash_log_file, f"ターゲットディレクトリ: {self.target_dir}\n")
             
             try:
                 # 環境情報をログに記録
@@ -134,35 +156,55 @@ class UpdateDownloader(QThread):
                 
                 self._update_files(self.extract_dir, self.target_dir)
                 logging.info("ファイル更新が正常に完了しました")
+                self._write_crash_log(crash_log_file, f"ファイル更新正常完了\n")
             except Exception as update_error:
-                logging.error(f"ファイル更新中にエラーが発生: {update_error}", exc_info=True)
+                error_msg = f"ファイル更新中にエラーが発生: {update_error}"
+                logging.error(error_msg, exc_info=True)
+                self._write_crash_log(crash_log_file, f"重大エラー: {error_msg}\n")
+                self._write_crash_log(crash_log_file, f"エラータイプ: {type(update_error).__name__}\n")
+                self._write_crash_log(crash_log_file, f"エラー詳細: {str(update_error)}\n")
+                
                 # 詳細な環境情報も含めてエラー報告
                 error_details = self._collect_error_context(update_error)
-                self.finished.emit(False, f"ファイル更新エラー（{step}）: {update_error}\n\n{error_details}")
+                self._write_crash_log(crash_log_file, f"コンテキスト情報:\n{error_details}\n")
+                
+                # クラッシュログの場所をエラーメッセージに含める
+                self.finished.emit(False, f"ファイル更新エラー（{step}）: {update_error}\n\n{error_details}\n\nクラッシュログ: {crash_log_file}")
                 return
             
             step = "完了処理"
             if not self._cancelled:
                 logging.info("更新処理が完全に完了 - 成功シグナル送信")
+                self._write_crash_log(crash_log_file, f"ステップ: {step} - 成功完了\n")
                 self.finished.emit(True, "更新が正常に完了しました")
                 logging.info("更新処理が完全に完了しました")
             
         except urllib.error.URLError as e:
             error_msg = f"ネットワークエラー（{step}）: {e}"
             logging.error(error_msg)
-            self.finished.emit(False, error_msg)
+            if crash_log_file:
+                self._write_crash_log(crash_log_file, f"ネットワークエラー: {error_msg}\n")
+            self.finished.emit(False, f"{error_msg}\n\nクラッシュログ: {crash_log_file}")
         except zipfile.BadZipFile as e:
             error_msg = f"ZIPファイルエラー（{step}）: {e}"
-            logging.error(error_msg) 
-            self.finished.emit(False, error_msg)
+            logging.error(error_msg)
+            if crash_log_file:
+                self._write_crash_log(crash_log_file, f"ZIPエラー: {error_msg}\n")
+            self.finished.emit(False, f"{error_msg}\n\nクラッシュログ: {crash_log_file}")
         except PermissionError as e:
             error_msg = f"ファイルアクセスエラー（{step}）: {e}"
             logging.error(error_msg)
-            self.finished.emit(False, error_msg)
+            if crash_log_file:
+                self._write_crash_log(crash_log_file, f"権限エラー: {error_msg}\n")
+            self.finished.emit(False, f"{error_msg}\n\nクラッシュログ: {crash_log_file}")
         except Exception as e:
             error_msg = f"予期しないエラー（{step}）: {e}"
             logging.error(f"更新エラー: {error_msg}", exc_info=True)
-            self.finished.emit(False, error_msg)
+            if crash_log_file:
+                self._write_crash_log(crash_log_file, f"予期しないエラー: {error_msg}\nエラータイプ: {type(e).__name__}\n")
+                import traceback
+                self._write_crash_log(crash_log_file, f"トレースバック:\n{traceback.format_exc()}\n")
+            self.finished.emit(False, f"{error_msg}\n\nクラッシュログ: {crash_log_file}")
             
         finally:
             self._cleanup()
@@ -352,6 +394,22 @@ class UpdateDownloader(QThread):
                 except:
                     pass
             raise
+    
+    def _write_crash_log(self, crash_log_file, message):
+        """クラッシュログファイルに情報を書き込み"""
+        try:
+            if crash_log_file:
+                with open(crash_log_file, 'a', encoding='utf-8') as f:
+                    f.write(message)
+                    f.flush()  # 即座にディスクに書き込み
+        except Exception as e:
+            # ログファイル書き込み失敗はサイレントに処理
+            pass
+    
+    def _get_timestamp(self):
+        """現在時刻の文字列を取得"""
+        import datetime
+        return datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     
     def _log_system_info(self):
         """システム情報をログに記録"""
@@ -981,11 +1039,29 @@ class VersionChecker:
                             # ログファイルのパスを取得
                             log_info = self._get_log_file_info()
                             
+                            # エラーメッセージからクラッシュログファイルを抽出
+                            crash_log_info = ""
+                            if "クラッシュログ:" in message:
+                                try:
+                                    crash_log_path = message.split("クラッシュログ:")[-1].strip()
+                                    if os.path.exists(crash_log_path):
+                                        crash_log_info = f"\n🔍 詳細クラッシュログ: {crash_log_path}"
+                                        # クラッシュログファイルをデスクトップにもコピー
+                                        desktop_crash_log = os.path.join(os.path.expanduser("~"), "Desktop", f"update_error_{os.getpid()}.txt")
+                                        try:
+                                            import shutil
+                                            shutil.copy2(crash_log_path, desktop_crash_log)
+                                            crash_log_info += f"\n📋 デスクトップにコピー: update_error_{os.getpid()}.txt"
+                                        except:
+                                            pass
+                                except:
+                                    pass
+                            
                             QMessageBox.critical(
                                 self.parent, 
                                 "更新エラー", 
                                 f"更新中にエラーが発生しました:\n\n{message}\n\n"
-                                f"詳細なログ情報:\n{log_info}\n\n"
+                                f"詳細なログ情報:\n{log_info}{crash_log_info}\n\n"
                                 f"問題が継続する場合は、ログファイルの内容を\n"
                                 f"開発者にご報告ください。"
                             )
