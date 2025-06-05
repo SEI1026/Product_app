@@ -15,11 +15,11 @@ import webbrowser
 from typing import Optional, Dict, Any, Tuple
 from urllib.request import urlopen, Request
 from urllib.error import URLError, HTTPError
-from PyQt5.QtCore import QThread, pyqtSignal, QObject
+from PyQt5.QtCore import QThread, pyqtSignal, QObject, QTimer
 from PyQt5.QtWidgets import QMessageBox, QProgressDialog, QPushButton, QApplication
 
 # 現在のアプリケーションバージョン
-CURRENT_VERSION = "2.3.6"
+CURRENT_VERSION = "2.3.7"
 
 # GitHub上のversion.jsonのURL
 # 株式会社大宝家具の商品登録入力ツール
@@ -995,141 +995,28 @@ class VersionChecker:
                 # ダウンロード用スレッドを作成
                 downloader = UpdateDownloader(version_info.download_url, app_dir)
                 
-                # 完了時の処理
+                # プログレス状態を保存する変数
+                self._update_result = None
+                self._update_message = None
+                
+                # 完了時の処理（UIスレッドで実行するためにタイマーを使用）
                 def on_finished(success: bool, message: str):
-                    completion_log = None
                     try:
-                        # 成功時専用のログファイルも作成
-                        completion_log = os.path.join(tempfile.gettempdir(), f"update_completion_{os.getpid()}.txt")
+                        logging.info(f"更新完了コールバック: success={success}")
                         
-                        def write_completion_log(msg):
-                            try:
-                                import datetime
-                                with open(completion_log, 'a', encoding='utf-8') as f:
-                                    f.write(f"{datetime.datetime.now().strftime('%H:%M:%S')}: {msg}\n")
-                                    f.flush()
-                            except:
-                                pass
-                        
-                        write_completion_log(f"完了コールバック開始: success={success}, message={message}")
-                        logging.info(f"更新完了コールバック: success={success}, message={message}")
+                        # 結果を保存
+                        self._update_result = success
+                        self._update_message = message
                         
                         # プログレスダイアログを閉じる
-                        write_completion_log("プログレスダイアログクローズ開始")
                         if progress and not progress.wasCanceled():
                             progress.close()
-                            logging.info("プログレスダイアログを閉じました")
-                            write_completion_log("プログレスダイアログクローズ完了")
+                            
+                        # UIスレッドで結果処理を実行（100ms後）
+                        QTimer.singleShot(100, self._handle_update_result)
                         
-                        if success and not downloader._cancelled:
-                            # 更新成功
-                            write_completion_log("更新成功 - 再起動確認ダイアログ表示準備")
-                            logging.info("更新成功 - 再起動確認ダイアログ表示")
-                            
-                            write_completion_log("QMessageBox.question呼び出し開始")
-                            reply = QMessageBox.question(
-                                self.parent,
-                                "更新完了",
-                                f"{message}\n\n"
-                                f"📋 重要: 更新を適用するにはアプリケーションの再起動が必要です\n\n"
-                                f"💾 現在の作業内容は自動保存されています\n"
-                                f"🔄 再起動中は一時的にアプリが終了します（数秒程度）\n"
-                                f"✅ 更新後は最新バージョンで再開されます\n\n"
-                                f"今すぐアプリケーションを再起動しますか？",
-                                QMessageBox.Yes | QMessageBox.No,
-                                QMessageBox.Yes
-                            )
-                            write_completion_log(f"QMessageBox.question完了: reply={reply}")
-                            
-                            if reply == QMessageBox.Yes:
-                                try:
-                                    write_completion_log("再起動スクリプト実行開始")
-                                    logging.info("再起動スクリプト実行")
-                                    self._create_restart_script()
-                                    write_completion_log("再起動スクリプト実行完了")
-                                except Exception as e:
-                                    write_completion_log(f"再起動エラー: {e}")
-                                    logging.error(f"再起動エラー: {e}")
-                                    QMessageBox.warning(
-                                        self.parent,
-                                        "再起動エラー",
-                                        "手動でアプリケーションを再起動してください。"
-                                    )
-                            else:
-                                write_completion_log("次回起動時適用選択")
-                                QMessageBox.information(
-                                    self.parent,
-                                    "更新予定",
-                                    "更新は次回起動時に適用されます。"
-                                )
-                            write_completion_log("成功処理完了")
-                        elif not downloader._cancelled:
-                            # 更新失敗（キャンセルでない場合のみエラー表示）
-                            logging.error(f"更新失敗: {message}")
-                            
-                            # ログファイルのパスを取得
-                            log_info = self._get_log_file_info()
-                            
-                            # エラーメッセージからクラッシュログファイルを抽出
-                            crash_log_info = ""
-                            if "クラッシュログ:" in message:
-                                try:
-                                    crash_log_path = message.split("クラッシュログ:")[-1].strip()
-                                    if os.path.exists(crash_log_path):
-                                        crash_log_info = f"\n🔍 詳細クラッシュログ: {crash_log_path}"
-                                        # クラッシュログファイルをデスクトップにもコピー
-                                        desktop_crash_log = os.path.join(os.path.expanduser("~"), "Desktop", f"update_error_{os.getpid()}.txt")
-                                        try:
-                                            import shutil
-                                            shutil.copy2(crash_log_path, desktop_crash_log)
-                                            crash_log_info += f"\n📋 デスクトップにコピー: update_error_{os.getpid()}.txt"
-                                        except:
-                                            pass
-                                except:
-                                    pass
-                            
-                            QMessageBox.critical(
-                                self.parent, 
-                                "更新エラー", 
-                                f"更新中にエラーが発生しました:\n\n{message}\n\n"
-                                f"詳細なログ情報:\n{log_info}{crash_log_info}\n\n"
-                                f"問題が継続する場合は、ログファイルの内容を\n"
-                                f"開発者にご報告ください。"
-                            )
-                        else:
-                            logging.info("更新がキャンセルされました")
-                            
                     except Exception as e:
-                        # 完了処理でのエラーを詳細に記録
-                        error_msg = f"更新完了処理エラー: {e}"
-                        logging.error(error_msg, exc_info=True)
-                        
-                        # 完了ログにエラーを記録
-                        if completion_log:
-                            try:
-                                with open(completion_log, 'a', encoding='utf-8') as f:
-                                    f.write(f"FATAL ERROR: {error_msg}\n")
-                                    import traceback
-                                    f.write(f"Traceback:\n{traceback.format_exc()}\n")
-                                    f.flush()
-                                
-                                # デスクトップにもコピー
-                                desktop_completion_log = os.path.join(os.path.expanduser("~"), "Desktop", f"update_completion_error_{os.getpid()}.txt")
-                                import shutil
-                                shutil.copy2(completion_log, desktop_completion_log)
-                            except:
-                                pass
-                        
-                        # エラーの場合でもユーザーに通知
-                        try:
-                            QMessageBox.critical(
-                                self.parent,
-                                "更新処理エラー",
-                                f"更新の完了処理中にエラーが発生しました:\n{e}\n\n"
-                                f"詳細ログ: {completion_log if completion_log else '利用不可'}"
-                            )
-                        except:
-                            pass
+                        logging.error(f"完了コールバック処理エラー: {e}", exc_info=True)
                 
                 def on_cancel():
                     """キャンセル処理"""
@@ -1336,6 +1223,85 @@ rm -f "$0"
 ''')
             os.chmod(script_path, 0o755)
             subprocess.Popen(['/bin/bash', script_path])
+    
+    def _handle_update_result(self):
+        """更新結果をUIスレッドで処理（ダイアログが消えないように）"""
+        try:
+            logging.info(f"更新結果処理開始: success={self._update_result}")
+            
+            if self._update_result and hasattr(self, '_update_message'):
+                # 更新成功 - 再起動確認
+                logging.info("更新成功 - 再起動確認ダイアログ表示")
+                
+                # メインウィンドウを親として確実に指定
+                parent = self.parent
+                if parent is None:
+                    parent = QApplication.activeWindow()
+                
+                reply = QMessageBox.question(
+                    parent,
+                    "更新完了",
+                    f"{self._update_message}\n\n"
+                    f"📋 重要: 更新を適用するにはアプリケーションの再起動が必要です\n\n"
+                    f"💾 現在の作業内容は自動保存されています\n"
+                    f"🔄 再起動中は一時的にアプリが終了します（数秒程度）\n"
+                    f"✅ 更新後は最新バージョンで再開されます\n\n"
+                    f"今すぐアプリケーションを再起動しますか？",
+                    QMessageBox.Yes | QMessageBox.No,
+                    QMessageBox.Yes
+                )
+                
+                logging.info(f"ユーザー選択: {reply}")
+                
+                if reply == QMessageBox.Yes:
+                    try:
+                        logging.info("再起動スクリプト実行")
+                        self._create_restart_script()
+                        logging.info("再起動スクリプト実行完了")
+                    except Exception as e:
+                        logging.error(f"再起動エラー: {e}")
+                        QMessageBox.warning(
+                            parent,
+                            "再起動エラー",
+                            "手動でアプリケーションを再起動してください。"
+                        )
+                else:
+                    QMessageBox.information(
+                        parent,
+                        "更新予定",
+                        "更新は次回起動時に適用されます。"
+                    )
+                    
+            elif self._update_result is False and hasattr(self, '_update_message'):
+                # 更新失敗
+                logging.error(f"更新失敗: {self._update_message}")
+                
+                parent = self.parent if self.parent else QApplication.activeWindow()
+                
+                QMessageBox.critical(
+                    parent, 
+                    "更新エラー", 
+                    f"更新中にエラーが発生しました:\n\n{self._update_message}\n\n"
+                    f"問題が継続する場合は開発者にご報告ください。"
+                )
+            else:
+                logging.info("更新がキャンセルされました")
+                
+        except Exception as e:
+            logging.error(f"更新結果処理エラー: {e}", exc_info=True)
+            # 最後の手段として基本的なエラーダイアログを表示
+            try:
+                QMessageBox.critical(
+                    None,
+                    "更新処理エラー",
+                    f"更新の完了処理中にエラーが発生しました:\n{e}"
+                )
+            except:
+                pass
+        finally:
+            # 状態をクリア
+            self._update_result = None
+            self._update_message = None
     
     def _detect_application_directory(self) -> str:
         """実行中のアプリケーションディレクトリを確実に検出"""
