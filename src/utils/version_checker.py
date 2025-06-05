@@ -19,7 +19,7 @@ from PyQt5.QtCore import QThread, pyqtSignal, QObject
 from PyQt5.QtWidgets import QMessageBox, QProgressDialog, QPushButton, QApplication
 
 # 現在のアプリケーションバージョン
-CURRENT_VERSION = "2.3.4"
+CURRENT_VERSION = "2.3.5"
 
 # GitHub上のversion.jsonのURL
 # 株式会社大宝家具の商品登録入力ツール
@@ -154,7 +154,12 @@ class UpdateDownloader(QThread):
                 # 環境情報をログに記録
                 self._log_system_info()
                 
-                self._update_files(self.extract_dir, self.target_dir)
+                # 展開されたディレクトリ内から実際の更新ファイルがあるディレクトリを特定
+                actual_source_dir = self._find_actual_source_directory(self.extract_dir)
+                self._write_crash_log(crash_log_file, f"実際のソースディレクトリ: {actual_source_dir}\n")
+                logging.info(f"実際のソースディレクトリ: {actual_source_dir}")
+                
+                self._update_files(actual_source_dir, self.target_dir)
                 logging.info("ファイル更新が正常に完了しました")
                 self._write_crash_log(crash_log_file, f"ファイル更新正常完了\n")
             except Exception as update_error:
@@ -909,22 +914,9 @@ class VersionChecker:
             progress.setMinimumWidth(400)  # 幅を広げる
             progress.show()
             
-            # アプリケーションディレクトリを取得
-            if getattr(sys, 'frozen', False):
-                # PyInstallerでビルドされた場合
-                # sys.executableではなく、実際の実行ファイルの場所を使用
-                app_dir = os.getcwd()  # 作業ディレクトリを使用
-                
-                # 実行ファイルがある場所を確実に特定
-                if hasattr(sys, '_MEIPASS'):
-                    # PyInstallerの一時ディレクトリの場合、実際のexeの場所を取得
-                    actual_exe = sys.argv[0] if sys.argv[0].endswith('.exe') else sys.executable
-                    app_dir = os.path.dirname(os.path.abspath(actual_exe))
-                else:
-                    app_dir = os.path.dirname(sys.executable)
-            else:
-                # 開発環境の場合
-                app_dir = os.path.dirname(os.path.abspath(__file__))
+            # アプリケーションディレクトリを自動検出
+            app_dir = self._detect_application_directory()
+            logging.info(f"自動検出されたアプリケーションディレクトリ: {app_dir}")
             
             # 自動ダウンロード機能：ユーザーの選択によって自動または手動
             msg_box = QMessageBox(self.parent)
@@ -1038,7 +1030,12 @@ class VersionChecker:
                             reply = QMessageBox.question(
                                 self.parent,
                                 "更新完了",
-                                f"{message}\n\n今すぐアプリケーションを再起動しますか？",
+                                f"{message}\n\n"
+                                f"📋 重要: 更新を適用するにはアプリケーションの再起動が必要です\n\n"
+                                f"💾 現在の作業内容は自動保存されています\n"
+                                f"🔄 再起動中は一時的にアプリが終了します（数秒程度）\n"
+                                f"✅ 更新後は最新バージョンで再開されます\n\n"
+                                f"今すぐアプリケーションを再起動しますか？",
                                 QMessageBox.Yes | QMessageBox.No,
                                 QMessageBox.Yes
                             )
@@ -1262,7 +1259,7 @@ class VersionChecker:
             return f"ログ情報取得エラー: {e}"
     
     def _create_restart_script(self):
-        """再起動用のスクリプトを作成"""
+        """再起動用のスクリプトを作成（安全なプロセス終了）"""
         if sys.platform == 'win32':
             # Windowsの場合
             exe_path = sys.executable
@@ -1270,31 +1267,60 @@ class VersionChecker:
             exe_name = os.path.basename(exe_path)
             script_path = os.path.join(exe_dir, 'update_restart.bat')
             
+            # 現在のプロセスIDを取得
+            current_pid = os.getpid()
+            
             # バッチファイルを作成（日本語対応）
             with open(script_path, 'w', encoding='utf-8') as f:
                 f.write(f'''@echo off
 chcp 65001 >nul
 echo 更新を適用しています...
-timeout /t 3 /nobreak > nul
+echo プロセス終了を待機中...
+
+REM 現在のプロセスが終了するまで待機（最大30秒）
+set /a count=0
+:wait_exit
+tasklist /FI "PID eq {current_pid}" 2>nul | find "{current_pid}" >nul
+if errorlevel 1 goto process_ended
+timeout /t 1 /nobreak > nul
+set /a count+=1
+if %count% geq 30 (
+    echo タイムアウト: プロセスを強制終了します
+    taskkill /f /pid {current_pid} >nul 2>&1
+    timeout /t 2 /nobreak > nul
+    goto process_ended
+)
+goto wait_exit
+
+:process_ended
+echo プロセス終了を確認しました
+timeout /t 1 /nobreak > nul
+
 :retry
 if exist "{exe_path}.new" (
-    taskkill /f /im "{exe_name}" >nul 2>&1
-    timeout /t 1 /nobreak > nul
+    echo ファイルを置換しています...
     move /y "{exe_path}.new" "{exe_path}" >nul 2>&1
     if errorlevel 1 (
         echo ファイルの置換に失敗しました。再試行します...
         timeout /t 2 /nobreak > nul
         goto retry
     )
+    echo ファイル置換完了
+) else (
+    echo 更新ファイル(.new)が見つかりません
 )
+
 echo 更新が完了しました。アプリケーションを起動します...
+timeout /t 1 /nobreak > nul
 start "" "{exe_path}"
 del "%~f0"
 ''')
-            # バッチファイルを実行して即座に終了
+            
+            # バッチファイルを実行（コンソールを隠す）
             subprocess.Popen(['cmd', '/c', script_path], 
-                           creationflags=subprocess.CREATE_NEW_CONSOLE)
-            # アプリケーションを終了
+                           creationflags=subprocess.CREATE_NO_WINDOW)
+            
+            # 現在のアプリケーションを優雅に終了
             QApplication.quit()
         else:
             # Unix系の場合
@@ -1310,6 +1336,100 @@ rm -f "$0"
 ''')
             os.chmod(script_path, 0o755)
             subprocess.Popen(['/bin/bash', script_path])
+    
+    def _detect_application_directory(self) -> str:
+        """実行中のアプリケーションディレクトリを確実に検出"""
+        try:
+            # 方法1: product_app.pyが存在するディレクトリを探す（最も確実）
+            if hasattr(self.parent, '__file__'):
+                # メインアプリケーションのファイルパスから取得
+                main_app_dir = os.path.dirname(os.path.abspath(self.parent.__file__))
+                if os.path.exists(os.path.join(main_app_dir, 'product_app.py')):
+                    logging.info(f"方法1でディレクトリ検出: {main_app_dir}")
+                    return main_app_dir
+            
+            # 方法2: 現在の作業ディレクトリをチェック
+            cwd = os.getcwd()
+            if os.path.exists(os.path.join(cwd, 'product_app.py')) or os.path.exists(os.path.join(cwd, '商品登録入力ツール.exe')):
+                logging.info(f"方法2でディレクトリ検出: {cwd}")
+                return cwd
+            
+            # 方法3: sys.argv[0]から取得
+            if sys.argv and sys.argv[0]:
+                script_dir = os.path.dirname(os.path.abspath(sys.argv[0]))
+                if os.path.exists(os.path.join(script_dir, 'product_app.py')) or os.path.exists(os.path.join(script_dir, '商品登録入力ツール.exe')):
+                    logging.info(f"方法3でディレクトリ検出: {script_dir}")
+                    return script_dir
+            
+            # 方法4: PyInstallerの場合
+            if getattr(sys, 'frozen', False):
+                if hasattr(sys, '_MEIPASS'):
+                    # 実行ファイルの場所を取得
+                    exe_dir = os.path.dirname(sys.executable)
+                    logging.info(f"方法4aでディレクトリ検出 (PyInstaller): {exe_dir}")
+                    return exe_dir
+                else:
+                    exe_dir = os.path.dirname(sys.executable)
+                    logging.info(f"方法4bでディレクトリ検出: {exe_dir}")
+                    return exe_dir
+            
+            # 方法5: フォールバック - current working directory
+            logging.warning("すべての方法で検出失敗、作業ディレクトリを使用")
+            return os.getcwd()
+            
+        except Exception as e:
+            logging.error(f"アプリケーションディレクトリ検出エラー: {e}")
+            return os.getcwd()
+    
+    def _find_actual_source_directory(self, extract_dir: str) -> str:
+        """展開されたZIPファイル内から実際の更新ファイルがあるディレクトリを特定"""
+        try:
+            logging.info(f"ソースディレクトリ検索開始: {extract_dir}")
+            
+            # まず展開されたディレクトリの構造を確認
+            for root, dirs, files in os.walk(extract_dir):
+                logging.debug(f"検索中: {root}, ディレクトリ: {dirs}, ファイル: {files[:5]}...")  # 最初の5ファイルのみ表示
+                
+                # 重要なファイルの存在をチェック
+                important_files = [
+                    'product_app.py',
+                    '商品登録入力ツール.exe',
+                    'constants.py',
+                    'version.json'
+                ]
+                
+                found_files = 0
+                for important_file in important_files:
+                    if important_file in files:
+                        found_files += 1
+                
+                # 重要なファイルが2つ以上見つかった場合、そのディレクトリを使用
+                if found_files >= 2:
+                    logging.info(f"適切なソースディレクトリを発見: {root} (重要ファイル: {found_files}個)")
+                    return root
+            
+            # 重要ファイルが見つからない場合、最初のサブディレクトリを確認
+            subdirs = [d for d in os.listdir(extract_dir) if os.path.isdir(os.path.join(extract_dir, d))]
+            if subdirs:
+                # ProductRegisterTool で始まるディレクトリを優先
+                for subdir in subdirs:
+                    if subdir.startswith('ProductRegisterTool'):
+                        subdir_path = os.path.join(extract_dir, subdir)
+                        logging.info(f"ProductRegisterToolディレクトリを使用: {subdir_path}")
+                        return subdir_path
+                
+                # それがない場合は最初のサブディレクトリ
+                first_subdir = os.path.join(extract_dir, subdirs[0])
+                logging.info(f"最初のサブディレクトリを使用: {first_subdir}")
+                return first_subdir
+            
+            # フォールバック: extract_dir自体を使用
+            logging.info(f"フォールバック: extract_dir自体を使用: {extract_dir}")
+            return extract_dir
+            
+        except Exception as e:
+            logging.error(f"ソースディレクトリ検索エラー: {e}")
+            return extract_dir
 
 
 def check_for_updates_on_startup(parent=None):
