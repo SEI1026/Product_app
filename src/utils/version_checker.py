@@ -129,11 +129,16 @@ class UpdateDownloader(QThread):
             logging.info(f"ファイル更新開始: extract_dir={self.extract_dir}, target_dir={self.target_dir}")
             
             try:
+                # 環境情報をログに記録
+                self._log_system_info()
+                
                 self._update_files(self.extract_dir, self.target_dir)
                 logging.info("ファイル更新が正常に完了しました")
             except Exception as update_error:
                 logging.error(f"ファイル更新中にエラーが発生: {update_error}", exc_info=True)
-                self.finished.emit(False, f"ファイル更新エラー（{step}）: {update_error}")
+                # 詳細な環境情報も含めてエラー報告
+                error_details = self._collect_error_context(update_error)
+                self.finished.emit(False, f"ファイル更新エラー（{step}）: {update_error}\n\n{error_details}")
                 return
             
             step = "完了処理"
@@ -347,6 +352,95 @@ class UpdateDownloader(QThread):
                 except:
                     pass
             raise
+    
+    def _log_system_info(self):
+        """システム情報をログに記録"""
+        try:
+            import psutil
+            import platform
+            
+            # メモリ情報
+            memory = psutil.virtual_memory()
+            logging.info(f"メモリ情報: 総容量={memory.total/1024/1024/1024:.1f}GB, "
+                        f"使用量={memory.percent}%, 利用可能={memory.available/1024/1024/1024:.1f}GB")
+            
+            # ディスク容量
+            disk = psutil.disk_usage(self.target_dir)
+            logging.info(f"ディスク容量: 総容量={disk.total/1024/1024/1024:.1f}GB, "
+                        f"使用量={disk.used/1024/1024/1024:.1f}GB, 空き容量={disk.free/1024/1024/1024:.1f}GB")
+            
+            # OS情報
+            logging.info(f"OS情報: {platform.system()} {platform.release()} {platform.version()}")
+            
+            # プロセス情報
+            current_process = psutil.Process()
+            logging.info(f"プロセス情報: メモリ使用量={current_process.memory_info().rss/1024/1024:.1f}MB, "
+                        f"CPU使用率={current_process.cpu_percent()}%")
+            
+        except ImportError:
+            logging.info("psutilが利用できません - 基本的なシステム情報のみ記録")
+            try:
+                # psutilなしでも取得できる情報
+                disk_free = shutil.disk_usage(self.target_dir).free
+                logging.info(f"ディスク空き容量: {disk_free/1024/1024/1024:.1f}GB")
+            except:
+                pass
+        except Exception as e:
+            logging.warning(f"システム情報取得エラー: {e}")
+    
+    def _collect_error_context(self, error):
+        """エラー発生時のコンテキスト情報を収集"""
+        try:
+            context_info = []
+            
+            # エラーの種類
+            context_info.append(f"エラータイプ: {type(error).__name__}")
+            
+            # ディスク容量確認
+            try:
+                disk = shutil.disk_usage(self.target_dir)
+                free_gb = disk.free / 1024 / 1024 / 1024
+                context_info.append(f"ディスク空き容量: {free_gb:.1f}GB")
+                if free_gb < 0.5:  # 500MB未満
+                    context_info.append("⚠️ ディスク容量不足の可能性")
+            except:
+                context_info.append("ディスク容量取得失敗")
+            
+            # 権限確認
+            try:
+                if not os.access(self.target_dir, os.W_OK):
+                    context_info.append("⚠️ ターゲットディレクトリへの書き込み権限なし")
+                else:
+                    context_info.append("✓ ターゲットディレクトリへの書き込み権限あり")
+            except:
+                context_info.append("権限確認失敗")
+            
+            # 一時ファイル確認
+            try:
+                if self.temp_file and os.path.exists(self.temp_file):
+                    temp_size = os.path.getsize(self.temp_file)
+                    context_info.append(f"一時ファイル: {temp_size/1024/1024:.1f}MB")
+                else:
+                    context_info.append("⚠️ 一時ファイルが見つからない")
+            except:
+                context_info.append("一時ファイル確認失敗")
+            
+            # 展開ディレクトリ確認
+            try:
+                if self.extract_dir and os.path.exists(self.extract_dir):
+                    extracted_files = []
+                    for root, dirs, files in os.walk(self.extract_dir):
+                        extracted_files.extend(files)
+                    context_info.append(f"展開済みファイル数: {len(extracted_files)}個")
+                else:
+                    context_info.append("⚠️ 展開ディレクトリが見つからない")
+            except:
+                context_info.append("展開ディレクトリ確認失敗")
+            
+            return "\n".join(context_info)
+            
+        except Exception as e:
+            return f"コンテキスト情報収集エラー: {e}"
     
     def terminate(self):
         """ダウンロードをキャンセル"""
@@ -894,11 +988,17 @@ class VersionChecker:
                         elif not downloader._cancelled:
                             # 更新失敗（キャンセルでない場合のみエラー表示）
                             logging.error(f"更新失敗: {message}")
+                            
+                            # ログファイルのパスを取得
+                            log_info = self._get_log_file_info()
+                            
                             QMessageBox.critical(
                                 self.parent, 
                                 "更新エラー", 
                                 f"更新中にエラーが発生しました:\n\n{message}\n\n"
-                                f"ログファイルで詳細を確認してください。"
+                                f"詳細なログ情報:\n{log_info}\n\n"
+                                f"問題が継続する場合は、ログファイルの内容を\n"
+                                f"開発者にご報告ください。"
                             )
                         else:
                             logging.info("更新がキャンセルされました")
@@ -1001,6 +1101,46 @@ class VersionChecker:
         except ValueError:
             # バージョン番号のパースに失敗した場合は文字列比較
             return version1 > version2
+    
+    def _get_log_file_info(self):
+        """ログファイルの情報を取得"""
+        try:
+            # 一般的なログファイルのパスを確認
+            possible_log_paths = [
+                "application.log",
+                "app.log", 
+                "product_app.log",
+                os.path.join(os.path.expanduser("~"), "AppData", "Local", "ProductApp", "logs", "app.log"),
+                os.path.join(os.path.dirname(sys.executable), "logs", "app.log"),
+                os.path.join(tempfile.gettempdir(), "product_app.log")
+            ]
+            
+            log_info = []
+            
+            # 現在のロガーの設定を確認
+            current_logger = logging.getLogger()
+            if current_logger.handlers:
+                for handler in current_logger.handlers:
+                    if hasattr(handler, 'baseFilename'):
+                        log_path = handler.baseFilename
+                        if os.path.exists(log_path):
+                            log_size = os.path.getsize(log_path)
+                            log_info.append(f"ログファイル: {log_path}")
+                            log_info.append(f"ファイルサイズ: {log_size/1024:.1f}KB")
+                            return "\n".join(log_info)
+            
+            # 既知のパスから検索
+            for log_path in possible_log_paths:
+                if os.path.exists(log_path):
+                    log_size = os.path.getsize(log_path)
+                    log_info.append(f"ログファイル: {log_path}")
+                    log_info.append(f"ファイルサイズ: {log_size/1024:.1f}KB")
+                    return "\n".join(log_info)
+            
+            return "ログファイルが見つかりませんでした"
+            
+        except Exception as e:
+            return f"ログ情報取得エラー: {e}"
     
     def _create_restart_script(self):
         """再起動用のスクリプトを作成"""
