@@ -113,10 +113,19 @@ class UpdateDownloader(QThread):
                 
             # ファイル更新
             self.status.emit("ファイルを更新中...")
-            self._update_files(self.extract_dir, self.target_dir)
+            logging.info(f"ファイル更新開始: extract_dir={self.extract_dir}, target_dir={self.target_dir}")
+            
+            try:
+                self._update_files(self.extract_dir, self.target_dir)
+                logging.info("ファイル更新が正常に完了しました")
+            except Exception as update_error:
+                logging.error(f"ファイル更新中にエラーが発生: {update_error}", exc_info=True)
+                self.finished.emit(False, f"ファイル更新エラー: {update_error}")
+                return
             
             if not self._cancelled:
                 self.finished.emit(True, "更新が正常に完了しました")
+                logging.info("更新処理が完全に完了しました")
             
         except urllib.error.URLError as e:
             error_msg = f"ネットワークエラー: {e}"
@@ -351,11 +360,7 @@ class UpdateDownloader(QThread):
                                 self.status.emit(f"ユーザーデータを保護: {file}")
                                 logging.info(f"ユーザーデータファイルを保護: {target_file}")
                                 continue  # このファイルはスキップ
-                    
-                    except Exception as e:
-                        logging.error(f"ファイル処理エラー {file}: {e}")
-                        # 個別ファイルエラーは続行
-                
+                        
                         # PyInstallerでビルドされたexeファイルの更新
                         if getattr(sys, 'frozen', False):
                             # 実行ファイル名と一致する場合（商品登録ツール.exe など）
@@ -415,8 +420,8 @@ class UpdateDownloader(QThread):
                             else:
                                 raise Exception(f"コピー後にファイルが存在しません: {target_file}")
                             
-                        except Exception as e:
-                            logging.error(f"ファイルコピーエラー {file}: {e}")
+                        except Exception as copy_error:
+                            logging.error(f"ファイルコピーエラー {file}: {copy_error}")
                             # 失敗したファイルがあれば削除
                             if os.path.exists(target_file):
                                 try:
@@ -424,7 +429,12 @@ class UpdateDownloader(QThread):
                                     logging.info(f"失敗したファイルを削除: {target_file}")
                                 except Exception as cleanup_e:
                                     logging.warning(f"失敗ファイル削除エラー: {cleanup_e}")
-                            raise
+                            raise copy_error
+                    
+                    except Exception as file_error:
+                        logging.error(f"ファイル処理エラー {file}: {file_error}")
+                        # 個別ファイルエラーは続行しない（重要なファイルの可能性があるため）
+                        raise file_error
         
             logging.info(f"ファイル更新完了: {file_count}個のファイルを処理")
             
@@ -734,11 +744,16 @@ class VersionChecker:
                 # 完了時の処理
                 def on_finished(success: bool, message: str):
                     try:
+                        logging.info(f"更新完了コールバック: success={success}, message={message}")
+                        
+                        # プログレスダイアログを閉じる
                         if progress and not progress.wasCanceled():
                             progress.close()
+                            logging.info("プログレスダイアログを閉じました")
                         
                         if success and not downloader._cancelled:
                             # 更新成功
+                            logging.info("更新成功 - 再起動確認ダイアログ表示")
                             reply = QMessageBox.question(
                                 self.parent,
                                 "更新完了",
@@ -749,6 +764,7 @@ class VersionChecker:
                             
                             if reply == QMessageBox.Yes:
                                 try:
+                                    logging.info("再起動スクリプト実行")
                                     self._create_restart_script()
                                 except Exception as e:
                                     logging.error(f"再起動エラー: {e}")
@@ -765,10 +781,27 @@ class VersionChecker:
                                 )
                         elif not downloader._cancelled:
                             # 更新失敗（キャンセルでない場合のみエラー表示）
-                            QMessageBox.critical(self.parent, "更新エラー", message)
+                            logging.error(f"更新失敗: {message}")
+                            QMessageBox.critical(
+                                self.parent, 
+                                "更新エラー", 
+                                f"更新中にエラーが発生しました:\n\n{message}\n\n"
+                                f"ログファイルで詳細を確認してください。"
+                            )
+                        else:
+                            logging.info("更新がキャンセルされました")
                             
                     except Exception as e:
-                        logging.error(f"更新完了処理エラー: {e}")
+                        logging.error(f"更新完了処理エラー: {e}", exc_info=True)
+                        # エラーの場合でもユーザーに通知
+                        try:
+                            QMessageBox.critical(
+                                self.parent,
+                                "更新処理エラー",
+                                f"更新の完了処理中にエラーが発生しました:\n{e}"
+                            )
+                        except:
+                            pass
                 
                 def on_cancel():
                     """キャンセル処理"""
