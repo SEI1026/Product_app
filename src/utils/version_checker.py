@@ -19,7 +19,7 @@ from PyQt5.QtCore import QThread, pyqtSignal, QObject, QTimer
 from PyQt5.QtWidgets import QMessageBox, QProgressDialog, QPushButton, QApplication
 
 # 現在のアプリケーションバージョン
-CURRENT_VERSION = "2.4.4"
+CURRENT_VERSION = "2.4.5"
 
 # GitHub上のversion.jsonのURL
 # 株式会社大宝家具の商品登録入力ツール
@@ -535,13 +535,14 @@ class UpdateDownloader(QThread):
             logging.info(f"実行ファイル名: {current_exe_name}")
             
             # ソースディレクトリの構造をログ出力
-            logging.info("=== ソースディレクトリ構造 ===")
-            for root, dirs, files in os.walk(source_dir):
-                rel_path = os.path.relpath(root, source_dir)
-                logging.info(f"ディレクトリ: {rel_path} (ファイル数: {len(files)})")
-                if dirs:
-                    logging.info(f"  サブディレクトリ: {dirs}")
-            logging.info("=== 構造確認完了 ===")
+            logging.info("=== ファイル更新詳細ログ ===")
+            logging.info(f"ソースディレクトリ: {source_dir}")
+            logging.info(f"ターゲットディレクトリ: {target_dir}")
+            logging.info(f"sys.frozen: {getattr(sys, 'frozen', False)}")
+            
+            # ファイル更新前の状態確認
+            self._log_directory_structure(source_dir, "更新前ソース構造")
+            self._log_directory_structure(target_dir, "更新前ターゲット構造")
             
             # ユーザーデータファイル（保護対象）のパターン
             protected_patterns = [
@@ -704,16 +705,54 @@ class UpdateDownloader(QThread):
         
             logging.info(f"ファイル更新完了: {file_count}個のファイルを処理")
             
+            # 更新結果の検証
+            logging.info("=== 更新結果検証 ===")
+            
             # .newファイルの存在確認
             new_exe_path = os.path.join(target_dir, '商品登録入力ツール.exe.new')
             if os.path.exists(new_exe_path):
-                logging.info(f"✅ .newファイル確認: {new_exe_path} (サイズ: {os.path.getsize(new_exe_path)} bytes)")
+                new_size = os.path.getsize(new_exe_path)
+                logging.info(f"✅ .newファイル確認: {new_exe_path} (サイズ: {new_size:,} bytes)")
+                
+                # 元のexeファイルと比較
+                original_exe = os.path.join(target_dir, '商品登録入力ツール.exe')
+                if os.path.exists(original_exe):
+                    original_size = os.path.getsize(original_exe)
+                    logging.info(f"📊 サイズ比較: 旧={original_size:,} bytes, 新={new_size:,} bytes")
+                    
             else:
-                logging.warning(f"⚠️ .newファイルが見つかりません: {new_exe_path}")
+                logging.error(f"❌ .newファイルが見つかりません: {new_exe_path}")
+                # ディレクトリ内容を確認
+                try:
+                    all_files = os.listdir(target_dir)
+                    new_files = [f for f in all_files if f.endswith('.new')]
+                    logging.info(f"ディレクトリ内の.newファイル: {new_files}")
+                except Exception as e:
+                    logging.error(f"ディレクトリ確認エラー: {e}")
+            
+            # C#フォルダの確認
+            cs_dir = os.path.join(target_dir, 'C#')
+            if os.path.exists(cs_dir):
+                cs_files = os.listdir(cs_dir)
+                logging.info(f"✅ C#フォルダ確認: {len(cs_files)}個のファイル/フォルダ")
+                
+                # 重要ファイルの確認
+                important_cs_files = ['csharp.exe', 'ec_csv_tool']
+                for important_file in important_cs_files:
+                    path = os.path.join(cs_dir, important_file)
+                    exists = os.path.exists(path)
+                    logging.info(f"  {'✅' if exists else '❌'} {important_file}")
+            else:
+                logging.error(f"❌ C#フォルダが見つかりません: {cs_dir}")
+            
+            # 更新後のディレクトリ構造をログ
+            self._log_directory_structure(target_dir, "更新後ターゲット構造")
             
             if not updated_exe and getattr(sys, 'frozen', False):
                 # exeファイルが見つからなかった場合の警告
-                logging.warning("更新パッケージ内に実行ファイルが見つかりませんでした")
+                logging.error("❌ 重大エラー: 更新パッケージ内に実行ファイルが見つかりませんでした")
+            else:
+                logging.info(f"✅ 実行ファイル更新フラグ: {updated_exe}")
                 
         except Exception as e:
             logging.error(f"ファイル更新エラー: {e}")
@@ -794,52 +833,105 @@ class UpdateDownloader(QThread):
     def _find_actual_source_directory(self, extract_dir: str) -> str:
         """展開されたZIPファイル内から実際の更新ファイルがあるディレクトリを特定"""
         try:
-            logging.info(f"ソースディレクトリ検索開始: {extract_dir}")
+            logging.info(f"=== ソースディレクトリ検索開始 ===")
+            logging.info(f"展開ディレクトリ: {extract_dir}")
             
-            # まず展開されたディレクトリの構造を確認
+            # 展開されたディレクトリの構造を詳細に表示
+            self._log_directory_structure(extract_dir, "展開構造")
+            
+            # 重要なファイルのリスト（優先順位付き）
+            critical_files = ['商品登録入力ツール.exe', 'product_app.py']
+            important_files = ['constants.py', 'version.json']
+            directory_markers = ['C#']  # 重要ディレクトリ
+            
+            best_candidate = None
+            best_score = 0
+            
+            # 全ディレクトリをチェック
             for root, dirs, files in os.walk(extract_dir):
-                logging.debug(f"検索中: {root}, ディレクトリ: {dirs}, ファイル: {files[:5]}...")  # 最初の5ファイルのみ表示
+                rel_path = os.path.relpath(root, extract_dir)
+                score = 0
                 
-                # 重要なファイルの存在をチェック
-                important_files = [
-                    'product_app.py',
-                    '商品登録入力ツール.exe',
-                    'constants.py',
-                    'version.json'
-                ]
+                # クリティカルファイルのチェック（高得点）
+                for critical_file in critical_files:
+                    if critical_file in files:
+                        score += 10
+                        logging.info(f"  ✓ クリティカルファイル発見: {critical_file} in {rel_path}")
                 
-                found_files = 0
+                # 重要ファイルのチェック（中得点）
                 for important_file in important_files:
                     if important_file in files:
-                        found_files += 1
+                        score += 5
+                        logging.info(f"  ✓ 重要ファイル発見: {important_file} in {rel_path}")
                 
-                # 重要なファイルが2つ以上見つかった場合、そのディレクトリを使用
-                if found_files >= 2:
-                    logging.info(f"適切なソースディレクトリを発見: {root} (重要ファイル: {found_files}個)")
-                    return root
+                # 重要ディレクトリのチェック（中得点）
+                for directory_marker in directory_markers:
+                    if directory_marker in dirs:
+                        score += 5
+                        logging.info(f"  ✓ 重要ディレクトリ発見: {directory_marker} in {rel_path}")
+                
+                logging.info(f"ディレクトリスコア: {rel_path} -> {score}点")
+                
+                if score > best_score:
+                    best_score = score
+                    best_candidate = root
+                    logging.info(f"  → 新しいベスト候補: {root} ({score}点)")
             
-            # 重要ファイルが見つからない場合、最初のサブディレクトリを確認
+            # 結果の決定
+            if best_candidate and best_score >= 10:  # クリティカルファイルが最低1つ必要
+                logging.info(f"✅ 最適ソースディレクトリ確定: {best_candidate} ({best_score}点)")
+                return best_candidate
+            
+            # フォールバック: ProductRegisterTool で始まるディレクトリ
             subdirs = [d for d in os.listdir(extract_dir) if os.path.isdir(os.path.join(extract_dir, d))]
+            for subdir in subdirs:
+                if subdir.startswith('ProductRegisterTool'):
+                    subdir_path = os.path.join(extract_dir, subdir)
+                    logging.info(f"⚠️ フォールバック1: ProductRegisterToolディレクトリ使用: {subdir_path}")
+                    return subdir_path
+            
+            # 最終フォールバック
             if subdirs:
-                # ProductRegisterTool で始まるディレクトリを優先
-                for subdir in subdirs:
-                    if subdir.startswith('ProductRegisterTool'):
-                        subdir_path = os.path.join(extract_dir, subdir)
-                        logging.info(f"ProductRegisterToolディレクトリを使用: {subdir_path}")
-                        return subdir_path
-                
-                # それがない場合は最初のサブディレクトリ
                 first_subdir = os.path.join(extract_dir, subdirs[0])
-                logging.info(f"最初のサブディレクトリを使用: {first_subdir}")
+                logging.info(f"⚠️ フォールバック2: 最初のサブディレクトリ使用: {first_subdir}")
                 return first_subdir
             
-            # フォールバック: extract_dir自体を使用
-            logging.info(f"フォールバック: extract_dir自体を使用: {extract_dir}")
+            # 最後の手段
+            logging.warning(f"⚠️ フォールバック3: extract_dir自体を使用: {extract_dir}")
             return extract_dir
             
         except Exception as e:
             logging.error(f"ソースディレクトリ検索エラー: {e}")
             return extract_dir
+    
+    def _log_directory_structure(self, directory: str, title: str, max_depth: int = 3):
+        """ディレクトリ構造を詳細にログ出力"""
+        try:
+            logging.info(f"=== {title} ===")
+            for root, dirs, files in os.walk(directory):
+                level = root.replace(directory, '').count(os.sep)
+                if level >= max_depth:
+                    continue
+                    
+                indent = '  ' * level
+                rel_path = os.path.relpath(root, directory)
+                if rel_path == '.':
+                    rel_path = '(ルート)'
+                    
+                logging.info(f"{indent}{rel_path}/ ({len(files)}ファイル)")
+                
+                # 重要なファイルをハイライト
+                important_extensions = ['.exe', '.py', '.json']
+                for file in files[:10]:  # 最大10ファイルまで表示
+                    file_ext = os.path.splitext(file)[1].lower()
+                    marker = "⭐" if file_ext in important_extensions else "  "
+                    logging.info(f"{indent}  {marker} {file}")
+                    
+                if len(files) > 10:
+                    logging.info(f"{indent}  ... 他{len(files)-10}ファイル")
+                    
+        except Exception as e:
+            logging.error(f"ディレクトリ構造ログエラー: {e}")
 
 
 class VersionChecker:
@@ -1227,7 +1319,8 @@ class VersionChecker:
     
     def _create_restart_script(self):
         """再起動用のスクリプトを作成（安全なプロセス終了）"""
-        if sys.platform == 'win32':
+        # Windows以外でもテスト用にバッチファイルを生成
+        if sys.platform == 'win32' or getattr(sys, 'frozen', False):
             # 実際のアプリケーションパスを取得
             app_dir = self._detect_application_directory()
             
@@ -1243,7 +1336,15 @@ class VersionChecker:
             exe_name = os.path.basename(exe_path)
             script_path = os.path.join(app_dir, 'update_restart.bat')
             
-            logging.info(f"再起動スクリプト作成: exe_path={exe_path}, script_path={script_path}")
+            # パスの存在確認
+            new_file_path = exe_path + '.new'
+            
+            logging.info(f"=== 再起動スクリプト情報 ===")
+            logging.info(f"アプリディレクトリ: {app_dir}")
+            logging.info(f"実行ファイルパス: {exe_path}")
+            logging.info(f".newファイルパス: {new_file_path}")
+            logging.info(f"スクリプトパス: {script_path}")
+            logging.info(f".newファイル存在: {os.path.exists(new_file_path)}")
             
             # 現在のプロセスIDを取得
             current_pid = os.getpid()
@@ -1252,61 +1353,102 @@ class VersionChecker:
             with open(script_path, 'w', encoding='utf-8') as f:
                 f.write(f'''@echo off
 chcp 65001 >nul
-echo 更新を適用しています...
-echo プロセス終了を待機中...
+echo =======================================
+echo    商品登録入力ツール 自動更新スクリプト
+echo =======================================
+echo.
+echo 開始時刻: %date% %time%
+echo プロセスID: {current_pid}
+echo アプリディレクトリ: {app_dir}
+echo 実行ファイル: {exe_path}
+echo .newファイル: {new_file_path}
+echo.
 
+REM .newファイルの存在確認
+echo [1/4] 更新ファイルの確認中...
+if exist "{new_file_path}" (
+    echo   ✓ .newファイルが存在します
+    dir "{new_file_path}" | find /v "Volume"
+) else (
+    echo   ✗ エラー: .newファイルが見つかりません
+    echo   確認パス: {new_file_path}
+    echo   ディレクトリ内容:
+    dir "{exe_dir}\\*.new" 2>nul
+    if errorlevel 1 echo   （.newファイルなし）
+    echo.
+    echo   更新を中止します。元のアプリケーションを起動します...
+    start "" "{exe_path}" 2>nul
+    if errorlevel 1 (
+        echo   ✗ アプリケーション起動に失敗しました
+        echo   手動で起動してください: {exe_path}
+    )
+    pause
+    goto end
+)
+
+echo [2/4] プロセス終了を待機中...
 REM 現在のプロセスが終了するまで待機（最大30秒）
 set /a count=0
 :wait_exit
 tasklist /FI "PID eq {current_pid}" 2>nul | find "{current_pid}" >nul
 if errorlevel 1 goto process_ended
-timeout /t 1 /nobreak > nul
-set /a count+=1
 if %count% geq 30 (
-    echo タイムアウト: プロセスを強制終了します
+    echo   ⚠ タイムアウト: プロセスを強制終了します
     taskkill /f /pid {current_pid} >nul 2>&1
     timeout /t 2 /nobreak > nul
     goto process_ended
 )
+timeout /t 1 /nobreak > nul
+set /a count+=1
+echo   待機中... (%count%/30秒)
 goto wait_exit
 
 :process_ended
-echo プロセス終了を確認しました
-timeout /t 1 /nobreak > nul
+echo   ✓ プロセス終了を確認しました
 
-echo 更新ファイル確認中...
-echo 対象exeファイル: {exe_path}
-echo .newファイル: {exe_path}.new
-
+echo [3/4] ファイルを置換中...
 :retry
-if exist "{exe_path}.new" (
-    echo .newファイルが存在します
-    echo ファイルを置換しています...
-    move /y "{exe_path}.new" "{exe_path}"
-    if errorlevel 1 (
-        echo ファイルの置換に失敗しました。再試行します...
-        timeout /t 2 /nobreak > nul
-        goto retry
-    )
-    echo ファイル置換完了
+move /y "{new_file_path}" "{exe_path}" >nul 2>&1
+if errorlevel 1 (
+    echo   ✗ ファイルの置換に失敗しました
+    echo   再試行します...
+    timeout /t 2 /nobreak > nul
+    goto retry
 ) else (
-    echo 警告: 更新ファイル(.new)が見つかりません
-    echo パス: {exe_path}.new
-    dir "{exe_dir}\\*.new" /b 2>nul
+    echo   ✓ ファイル置換完了
 )
 
-echo 更新が完了しました。アプリケーションを起動します...
-echo 起動パス: {exe_path}
-timeout /t 1 /nobreak > nul
+echo [4/4] アプリケーションを起動中...
+echo   起動パス: {exe_path}
 start "" "{exe_path}"
-echo 再起動スクリプトを削除します
+if errorlevel 1 (
+    echo   ✗ アプリケーション起動に失敗しました
+    echo   手動で起動してください: {exe_path}
+    pause
+) else (
+    echo   ✓ アプリケーション起動完了
+)
+
+:end
+echo.
+echo 更新処理が完了しました。
+echo このウィンドウは3秒後に自動で閉じます...
+timeout /t 3 /nobreak > nul
 del "%~f0"
 ''')
             
             # バッチファイルを実行（デバッグのためコンソール表示）
-            # CREATE_NEW_CONSOLE = 0x00000010
-            subprocess.Popen(['cmd', '/c', script_path], 
-                           creationflags=0x00000010)
+            # Windows環境でのみ実行
+            try:
+                # CREATE_NEW_CONSOLE = 0x00000010
+                subprocess.Popen(['cmd', '/c', script_path], 
+                               creationflags=0x00000010)
+                logging.info("✅ 再起動スクリプト実行開始")
+            except (ValueError, OSError) as e:
+                # Linux等での実行時はスクリプト生成のみ
+                logging.info(f"ℹ️ 再起動スクリプト生成完了（実行は次回Windows環境で）: {e}")
+                if not sys.platform.startswith('win'):
+                    logging.info("  → Linuxテスト環境のため、スクリプト実行をスキップしました")
             
             # 現在のアプリケーションを優雅に終了
             QApplication.quit()
@@ -1407,47 +1549,72 @@ rm -f "$0"
     def _detect_application_directory(self) -> str:
         """実行中のアプリケーションディレクトリを確実に検出"""
         try:
-            # 方法1: product_app.pyが存在するディレクトリを探す（最も確実）
-            if hasattr(self.parent, '__file__'):
-                # メインアプリケーションのファイルパスから取得
-                main_app_dir = os.path.dirname(os.path.abspath(self.parent.__file__))
-                if os.path.exists(os.path.join(main_app_dir, 'product_app.py')):
-                    logging.info(f"方法1でディレクトリ検出: {main_app_dir}")
-                    return main_app_dir
+            candidate_dirs = []
             
-            # 方法2: 現在の作業ディレクトリをチェック
+            # 方法1: 現在の作業ディレクトリをチェック（最も確実）
             cwd = os.getcwd()
             logging.info(f"現在の作業ディレクトリ: {cwd}")
-            if os.path.exists(os.path.join(cwd, 'product_app.py')) or os.path.exists(os.path.join(cwd, '商品登録入力ツール.exe')):
-                logging.info(f"方法2でディレクトリ検出: {cwd}")
-                return cwd
+            candidate_dirs.append(cwd)
             
-            # 方法3: sys.argv[0]から取得
+            # 方法2: sys.argv[0]から取得
             if sys.argv and sys.argv[0]:
                 script_dir = os.path.dirname(os.path.abspath(sys.argv[0]))
-                if os.path.exists(os.path.join(script_dir, 'product_app.py')) or os.path.exists(os.path.join(script_dir, '商品登録入力ツール.exe')):
-                    logging.info(f"方法3でディレクトリ検出: {script_dir}")
-                    return script_dir
+                logging.info(f"sys.argv[0]ディレクトリ: {script_dir}")
+                candidate_dirs.append(script_dir)
             
-            # 方法4: PyInstallerの場合
+            # 方法3: sys.executableから取得
             if getattr(sys, 'frozen', False):
-                if hasattr(sys, '_MEIPASS'):
-                    # 実行ファイルの場所を取得
-                    exe_dir = os.path.dirname(sys.executable)
-                    logging.info(f"方法4aでディレクトリ検出 (PyInstaller): {exe_dir}")
-                    return exe_dir
-                else:
-                    exe_dir = os.path.dirname(sys.executable)
-                    logging.info(f"方法4bでディレクトリ検出: {exe_dir}")
-                    return exe_dir
+                exe_dir = os.path.dirname(sys.executable)
+                logging.info(f"sys.executableディレクトリ: {exe_dir}")
+                candidate_dirs.append(exe_dir)
             
-            # 方法5: フォールバック - current working directory
-            logging.warning("すべての方法で検出失敗、作業ディレクトリを使用")
-            return os.getcwd()
+            # 方法4: __file__から取得（開発環境用）
+            try:
+                this_file_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+                logging.info(f"__file__ベースディレクトリ: {this_file_dir}")
+                candidate_dirs.append(this_file_dir)
+            except:
+                pass
+            
+            # 各候補をチェックして最適なものを選択
+            for candidate in candidate_dirs:
+                if self._validate_app_directory(candidate):
+                    logging.info(f"✅ 確定されたアプリケーションディレクトリ: {candidate}")
+                    return candidate
+                    
+            # 全て失敗した場合のフォールバック
+            logging.warning("⚠️ 適切なディレクトリが見つからず、作業ディレクトリを使用")
+            return cwd
             
         except Exception as e:
             logging.error(f"アプリケーションディレクトリ検出エラー: {e}")
             return os.getcwd()
+    
+    def _validate_app_directory(self, directory: str) -> bool:
+        """ディレクトリがアプリケーションディレクトリかどうかを検証"""
+        try:
+            # 重要ファイルの存在を確認
+            important_files = [
+                'product_app.py',      # Pythonスクリプト版
+                '商品登録入力ツール.exe',   # ビルド版
+                'constants.py',        # 設定ファイル
+                'version.json'         # バージョン情報
+            ]
+            
+            found_files = 0
+            for file in important_files:
+                if os.path.exists(os.path.join(directory, file)):
+                    found_files += 1
+                    logging.debug(f"  ✓ {file}")
+                    
+            # 2つ以上の重要ファイルがあれば有効
+            is_valid = found_files >= 2
+            logging.info(f"ディレクトリ検証: {directory} -> {found_files}/4ファイル → {'有効' if is_valid else '無効'}")
+            return is_valid
+            
+        except Exception as e:
+            logging.error(f"ディレクトリ検証エラー {directory}: {e}")
+            return False
     
 
 
