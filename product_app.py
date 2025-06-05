@@ -616,8 +616,14 @@ class ProductApp(QWidget):
         self.auto_save_timer.timeout.connect(self._auto_save_data)
         
         # 起動時の自動更新チェック（設定が有効な場合のみ、少し遅延させて実行）
+        logging.info(f"起動時更新チェック設定: check_for_updates_on_startup={check_for_updates_on_startup is not None}")
+        logging.info(f"自動更新チェック有効: {getattr(self, 'auto_update_check_enabled', True)}")
+        
         if check_for_updates_on_startup and getattr(self, 'auto_update_check_enabled', True):
-            QTimer.singleShot(2000, lambda: check_for_updates_on_startup(self))
+            logging.info("起動時更新チェックを2秒後に実行予定")
+            QTimer.singleShot(2000, lambda: self._delayed_update_check())
+        else:
+            logging.warning("起動時更新チェックがスキップされました")
         self.auto_save_timer.start(AUTO_SAVE_INTERVAL_MS) # 自動保存間隔
 
         # new_btn の接続を新しいハンドラに変更
@@ -4218,6 +4224,18 @@ class ProductApp(QWidget):
                     "更新チェックエラー", 
                     "更新チェック機能で問題が発生しました。\n後でもう一度お試しください。"
                 )
+    
+    def _delayed_update_check(self):
+        """遅延実行される起動時更新チェック"""
+        try:
+            logging.info("遅延更新チェック実行開始")
+            if check_for_updates_on_startup:
+                check_for_updates_on_startup(self)
+                logging.info("遅延更新チェック実行完了")
+            else:
+                logging.error("check_for_updates_on_startup関数が利用できません")
+        except Exception as e:
+            logging.error(f"遅延更新チェック中にエラー: {e}", exc_info=True)
     
     def _show_about_dialog(self):
         """バージョン情報ダイアログを表示"""
