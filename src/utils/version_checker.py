@@ -12,6 +12,9 @@ import zipfile
 import shutil
 import urllib.error
 import webbrowser
+import re
+import time
+import requests
 from typing import Optional, Dict, Any, Tuple
 from urllib.request import urlopen, Request
 from urllib.error import URLError, HTTPError
@@ -1914,9 +1917,6 @@ def check_for_updates_simple(parent=None, silent=False):
     シンプルな更新チェック（通知のみ）
     """
     try:
-        import requests
-        import webbrowser
-        from PyQt5.QtWidgets import QMessageBox
         
         # GitHub APIから最新バージョンを取得
         response = requests.get("https://api.github.com/repos/SEI1026/Product_app/releases/latest", timeout=5)
@@ -1964,10 +1964,6 @@ def simple_auto_update(parent, download_url, new_version):
     """
     シンプルな自動更新（データ移行付き）
     """
-    import tempfile
-    import zipfile
-    import requests
-    from PyQt5.QtWidgets import QProgressDialog, QApplication
     
     try:
         # プログレスダイアログ
@@ -2004,7 +2000,6 @@ def simple_auto_update(parent, download_url, new_version):
         # 2. ZIPを展開（元のツールと同じディレクトリに）
         extract_dir = os.path.join(current_dir, f"ProductRegisterTool-v{new_version}")
         if os.path.exists(extract_dir):
-            import shutil
             shutil.rmtree(extract_dir)
             
         with zipfile.ZipFile(temp_zip, 'r') as zip_ref:
@@ -2066,7 +2061,6 @@ def simple_auto_update(parent, download_url, new_version):
             source_file = os.path.join(current_dir, file)
             if os.path.exists(source_file):
                 dest_file = os.path.join(main_folder, file)
-                import shutil
                 shutil.copy2(source_file, dest_file)
                 logging.info(f"ユーザーデータをコピー: {source_file} → {dest_file}")
         
@@ -2092,7 +2086,6 @@ def simple_auto_update(parent, download_url, new_version):
             logging.info(f"🚀 新バージョン起動: {new_exe}")
             
             try:
-                import subprocess
                 
                 # Windowsの場合、絶対パスで起動
                 abs_exe = os.path.abspath(new_exe)
@@ -2107,7 +2100,6 @@ def simple_auto_update(parent, download_url, new_version):
                                creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if hasattr(subprocess, 'CREATE_NEW_PROCESS_GROUP') else 0)
                 
                 # 少し待ってから終了
-                import time
                 time.sleep(1)
                 
                 logging.info("🚀 新バージョン起動完了、現在のアプリを終了")
