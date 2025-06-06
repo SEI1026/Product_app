@@ -1,11 +1,30 @@
 {
-    "version":  "2.5.6",
+    "version":  "2.5.7",
     "release_date":  "2025-06-06",
-    "download_url":  "https://github.com/SEI1026/Product_app/releases/download/v2.5.6/ProductRegisterTool-v2.5.6.zip",
+    "download_url":  "https://github.com/SEI1026/Product_app/releases/download/v2.5.7/ProductRegisterTool-v2.5.7.zip",
     "minimum_required_version":  "2.0.0",
     "_comment_download_url":  "GitHub Releases URL for auto-update",
     "_comment_company":  "Product Registration Tool by Daihokagu",
     "changelog":  {
+                      "v2.5.7":  {
+                                     "release_date":  "2025-06-06",
+                                     "type":  "patch",
+                                     "features":  [
+                                                      "Fixed auto-update system",
+                                                      "Enhanced debugging for update process",
+                                                      "Improved ZIP structure handling"
+                                                  ],
+                                     "improvements":  [
+                                                          "Resolved pyi_rth_inspect PyInstaller error",
+                                                          "Enhanced .new file creation logic",
+                                                          "Better error reporting for update failures"
+                                                      ],
+                                     "bug_fixes":  [
+                                                       "Fixed .new file not being created during updates",
+                                                       "Resolved \u0027こ�Eアプリはお使ぁE�EPCでは実行できません\u0027 error",
+                                                       "Fixed PowerShell script execution issues"
+                                                   ]
+                                 },
                       "v2.2.0":  {
                                      "release_date":  "2025-06-04",
                                      "type":  "minor",

@@ -19,7 +19,7 @@ from PyQt5.QtCore import QThread, pyqtSignal, QObject, QTimer
 from PyQt5.QtWidgets import QMessageBox, QProgressDialog, QPushButton, QApplication
 
 # 現在のアプリケーションバージョン
-CURRENT_VERSION = "2.5.6"
+CURRENT_VERSION = "2.5.7"
 
 # GitHub上のversion.jsonのURL
 # 株式会社大宝家具の商品登録入力ツール
@@ -673,7 +673,7 @@ class UpdateDownloader(QThread):
                         
                         # PyInstallerでビルドされたexeファイルの更新
                         if getattr(sys, 'frozen', False):
-                            # 商品登録入力ツール.exe の場合
+                            # 商品登録入力ツール.exe の場合（どの階層にあっても）
                             if file == '商品登録入力ツール.exe':
                                 # 実行中のexeファイルは.newとして保存
                                 original_target = target_file
@@ -681,9 +681,11 @@ class UpdateDownloader(QThread):
                                 updated_exe = True
                                 self.status.emit(f"実行ファイルを更新中: {file}")
                                 logging.info(f"🎯 EXEファイル検出: {file}")
+                                logging.info(f"   📂 rel_path: '{rel_path}'")
                                 logging.info(f"   📂 元のターゲット: {original_target}")
                                 logging.info(f"   🆕 新しいターゲット: {target_file}")
                                 logging.info(f"⚡ 重要: .newファイルを作成します: {target_file}")
+                                logging.info(f"🔥🔥🔥 ZIP階層構造でEXEファイル発見！ 🔥🔥🔥")
                             else:
                                 logging.info(f"📄 通常ファイル: {file}")
                         else:
