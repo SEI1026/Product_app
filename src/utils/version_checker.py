@@ -19,7 +19,7 @@ from PyQt5.QtCore import QThread, pyqtSignal, QObject, QTimer
 from PyQt5.QtWidgets import QMessageBox, QProgressDialog, QPushButton, QApplication
 
 # 現在のアプリケーションバージョン
-CURRENT_VERSION = "2.6.1"
+CURRENT_VERSION = "2.6.0"
 
 # GitHub上のversion.jsonのURL
 # 株式会社大宝家具の商品登録入力ツール
@@ -2093,7 +2093,6 @@ def simple_auto_update(parent, download_url, new_version):
             
             try:
                 import subprocess
-                import os
                 
                 # Windowsの場合、絶対パスで起動
                 abs_exe = os.path.abspath(new_exe)
