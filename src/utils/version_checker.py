@@ -19,7 +19,7 @@ from PyQt5.QtCore import QThread, pyqtSignal, QObject, QTimer
 from PyQt5.QtWidgets import QMessageBox, QProgressDialog, QPushButton, QApplication
 
 # 現在のアプリケーションバージョン
-CURRENT_VERSION = "2.4.8"
+CURRENT_VERSION = "2.4.9"
 
 # GitHub上のversion.jsonのURL
 # 株式会社大宝家具の商品登録入力ツール
@@ -1370,90 +1370,90 @@ class VersionChecker:
             # 現在のプロセスIDを取得
             current_pid = os.getpid()
             
-            # バッチファイルを作成（日本語対応）
-            with open(script_path, 'w', encoding='utf-8') as f:
+            # バッチファイルを作成（CP932エンコーディングで日本語対応）
+            with open(script_path, 'w', encoding='cp932') as f:
                 f.write(f'''@echo off
 chcp 65001 >nul
 echo =======================================
-echo    商品登録入力ツール 自動更新スクリプト
+echo    Product Registration Tool Auto Update
 echo =======================================
 echo.
-echo 開始時刻: %date% %time%
-echo プロセスID: {current_pid}
-echo アプリディレクトリ: {app_dir}
-echo 実行ファイル: {exe_path}
-echo .newファイル: {new_file_path}
+echo Start Time: %date% %time%
+echo Process ID: {current_pid}
+echo App Directory: {app_dir}
+echo Executable: {exe_path}
+echo New File: {new_file_path}
 echo.
 
-REM .newファイルの存在確認
-echo [1/4] 更新ファイルの確認中...
+REM Check for .new file
+echo [1/4] Checking update file...
 if exist "{new_file_path}" (
-    echo   ✓ .newファイルが存在します
+    echo   ✓ New file exists
     dir "{new_file_path}" | find /v "Volume"
 ) else (
-    echo   ✗ エラー: .newファイルが見つかりません
-    echo   確認パス: {new_file_path}
-    echo   ディレクトリ内容:
+    echo   ✗ Error: New file not found
+    echo   Expected path: {new_file_path}
+    echo   Directory contents:
     dir "{app_dir}\\*.new" 2>nul
-    if errorlevel 1 echo   （.newファイルなし）
+    if errorlevel 1 echo   (No .new files found)
     echo.
-    echo   更新を中止します。元のアプリケーションを起動します...
+    echo   Update cancelled. Starting original application...
     start "" "{exe_path}" 2>nul
     if errorlevel 1 (
-        echo   ✗ アプリケーション起動に失敗しました
-        echo   手動で起動してください: {exe_path}
+        echo   ✗ Failed to start application
+        echo   Please start manually: {exe_path}
     )
     pause
     goto end
 )
 
-echo [2/4] プロセス終了を待機中...
-REM 現在のプロセスが終了するまで待機（最大30秒）
+echo [2/4] Waiting for process to end...
+REM Wait for current process to end (max 30 seconds)
 set /a count=0
 :wait_exit
 tasklist /FI "PID eq {current_pid}" 2>nul | find "{current_pid}" >nul
 if errorlevel 1 goto process_ended
 if %count% geq 30 (
-    echo   ⚠ タイムアウト: プロセスを強制終了します
+    echo   ⚠ Timeout: Forcing process termination
     taskkill /f /pid {current_pid} >nul 2>&1
     timeout /t 2 /nobreak > nul
     goto process_ended
 )
 timeout /t 1 /nobreak > nul
 set /a count+=1
-echo   待機中... (%count%/30秒)
+echo   Waiting... (%count%/30 seconds)
 goto wait_exit
 
 :process_ended
-echo   ✓ プロセス終了を確認しました
+echo   ✓ Process termination confirmed
 
-echo [3/4] ファイルを置換中...
+echo [3/4] Replacing file...
 :retry
 move /y "{new_file_path}" "{exe_path}" >nul 2>&1
 if errorlevel 1 (
-    echo   ✗ ファイルの置換に失敗しました
-    echo   再試行します...
+    echo   ✗ File replacement failed
+    echo   Retrying...
     timeout /t 2 /nobreak > nul
     goto retry
 ) else (
-    echo   ✓ ファイル置換完了
+    echo   ✓ File replacement completed
 )
 
-echo [4/4] アプリケーションを起動中...
-echo   起動パス: {exe_path}
+echo [4/4] Starting application...
+echo   Start path: {exe_path}
 start "" "{exe_path}"
 if errorlevel 1 (
-    echo   ✗ アプリケーション起動に失敗しました
-    echo   手動で起動してください: {exe_path}
+    echo   ✗ Failed to start application
+    echo   Please start manually: {exe_path}
     pause
 ) else (
-    echo   ✓ アプリケーション起動完了
+    echo   ✓ Application started successfully
 )
 
 :end
 echo.
-echo 更新処理が完了しました。
-echo このウィンドウは3秒後に自動で閉じます...
+echo Update process completed.
+echo This window will close automatically in 3 seconds...
 timeout /t 3 /nobreak > nul
 del "%~f0"
 ''')
