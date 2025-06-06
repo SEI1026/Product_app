@@ -19,7 +19,7 @@ from PyQt5.QtCore import QThread, pyqtSignal, QObject, QTimer
 from PyQt5.QtWidgets import QMessageBox, QProgressDialog, QPushButton, QApplication
 
 # 現在のアプリケーションバージョン
-CURRENT_VERSION = "2.5.4"
+CURRENT_VERSION = "2.5.5"
 
 # GitHub上のversion.jsonのURL
 # 株式会社大宝家具の商品登録入力ツール
@@ -107,7 +107,13 @@ class UpdateDownloader(QThread):
             logging.info(f"ダウンロード開始: {self.download_url}")
             self._write_crash_log(crash_log_file, f"ステップ: {step} - URL: {self.download_url}\n")
             
-            # URL検証
+            # 🚨 URL検証 - 詳細確認
+            logging.info(f"🔍 ダウンロードURL詳細確認:")
+            logging.info(f"  📋 URL: {self.download_url}")
+            logging.info(f"  ✅ URL存在: {bool(self.download_url)}")
+            logging.info(f"  ✅ HTTPS: {self.download_url.startswith('https://') if self.download_url else False}")
+            logging.info(f"  📏 URL長: {len(self.download_url) if self.download_url else 0}")
+            
             if not self.download_url or not self.download_url.startswith('https://'):
                 error_msg = f"無効なダウンロードURL: {self.download_url}"
                 logging.error(error_msg)
@@ -149,6 +155,61 @@ class UpdateDownloader(QThread):
             self._write_crash_log(crash_log_file, f"ステップ: {step} - ファイル更新開始\n")
             self._write_crash_log(crash_log_file, f"展開ディレクトリ: {self.extract_dir}\n")
             self._write_crash_log(crash_log_file, f"ターゲットディレクトリ: {self.target_dir}\n")
+            
+            # === 🚨 包括的デバッグ情報収集 ===
+            logging.info("=" * 80)
+            logging.info("🚨🚨🚨 包括的デバッグ情報収集開始 🚨🚨🚨")
+            logging.info("=" * 80)
+            
+            # sys.frozen状態を確認
+            is_frozen = getattr(sys, 'frozen', False)
+            logging.info(f"📊 sys.frozen: {is_frozen}")
+            logging.info(f"📊 sys.executable: {sys.executable}")
+            logging.info(f"📊 sys.argv[0]: {sys.argv[0] if sys.argv else 'None'}")
+            logging.info(f"📊 現在の作業ディレクトリ: {os.getcwd()}")
+            
+            # 展開ディレクトリの完全構造表示
+            logging.info("🔍 展開ディレクトリの完全構造:")
+            try:
+                for root, dirs, files in os.walk(self.extract_dir):
+                    level = root.replace(self.extract_dir, '').count(os.sep)
+                    indent = '  ' * level
+                    rel_path = os.path.relpath(root, self.extract_dir)
+                    logging.info(f"{indent}📁 {rel_path}/ ({len(files)} files, {len(dirs)} dirs)")
+                    
+                    for file in files:
+                        file_path = os.path.join(root, file)
+                        file_size = os.path.getsize(file_path)
+                        if file.endswith('.exe'):
+                            logging.info(f"{indent}  🔥🔥 EXE: {file} ({file_size:,} bytes) 🔥🔥")
+                        else:
+                            logging.info(f"{indent}  📄 {file} ({file_size:,} bytes)")
+            except Exception as e:
+                logging.error(f"❌ 展開ディレクトリ構造表示エラー: {e}")
+            
+            # ターゲットディレクトリの確認
+            logging.info(f"🎯 ターゲットディレクトリ確認: {self.target_dir}")
+            logging.info(f"🎯 ターゲットディレクトリ存在: {os.path.exists(self.target_dir)}")
+            if os.path.exists(self.target_dir):
+                try:
+                    target_files = os.listdir(self.target_dir)
+                    logging.info(f"🎯 ターゲットディレクトリ内容: {len(target_files)} items")
+                    for item in target_files[:10]:  # 最初の10個
+                        item_path = os.path.join(self.target_dir, item)
+                        if os.path.isfile(item_path):
+                            size = os.path.getsize(item_path)
+                            logging.info(f"  📄 {item} ({size:,} bytes)")
+                        else:
+                            logging.info(f"  📁 {item}/")
+                except Exception as e:
+                    logging.error(f"❌ ターゲットディレクトリ内容確認エラー: {e}")
+            
+            # .newファイルの事前確認
+            expected_new_file = os.path.join(self.target_dir, '商品登録入力ツール.exe.new')
+            logging.info(f"🔍 事前.newファイル確認: {expected_new_file}")
+            logging.info(f"🔍 事前.newファイル存在: {os.path.exists(expected_new_file)}")
+            
+            logging.info("=" * 80)
             
             try:
                 # 環境情報をログに記録
@@ -596,7 +657,11 @@ class UpdateDownloader(QThread):
                         target_file = os.path.join(target_root, file)
                         file_count += 1
                         
-                        logging.debug(f"処理中のファイル[{file_count}]: {file}")
+                        logging.info(f"🔍 処理中のファイル[{file_count}]: {file}")
+                        logging.info(f"   📁 rel_path: '{rel_path}'")
+                        logging.info(f"   📂 source_file: {source_file}")
+                        logging.info(f"   📂 target_file: {target_file}")
+                        logging.info(f"   🖥️ sys.frozen: {getattr(sys, 'frozen', False)}")
                         
                         # ユーザーデータファイルの保護チェック
                         if self._is_user_data_file(file, rel_path, protected_patterns):
@@ -611,17 +676,24 @@ class UpdateDownloader(QThread):
                             # 商品登録入力ツール.exe の場合
                             if file == '商品登録入力ツール.exe':
                                 # 実行中のexeファイルは.newとして保存
+                                original_target = target_file
                                 target_file = os.path.join(target_dir, '商品登録入力ツール.exe.new')
                                 updated_exe = True
                                 self.status.emit(f"実行ファイルを更新中: {file}")
-                                logging.info(f"実行ファイル更新: {source_file} -> {target_file}")
+                                logging.info(f"🎯 EXEファイル検出: {file}")
+                                logging.info(f"   📂 元のターゲット: {original_target}")
+                                logging.info(f"   🆕 新しいターゲット: {target_file}")
                                 logging.info(f"⚡ 重要: .newファイルを作成します: {target_file}")
+                            else:
+                                logging.info(f"📄 通常ファイル: {file}")
                         else:
                             # 開発環境の場合、実行中のスクリプトと同じ場合
                             if os.path.abspath(target_file) == current_exe:
                                 target_file = target_file + '.new'
                                 updated_exe = True
                                 logging.info(f"開発環境ファイル更新: {file}")
+                            else:
+                                logging.info(f"📄 開発環境通常ファイル: {file}")
                         
                         # ファイルをコピー
                         retry_count = 0
@@ -649,11 +721,38 @@ class UpdateDownloader(QThread):
                                     self.status.emit(f"ファイルコピー再試行中 ({retry_count+1}/{max_retries}): {file}")
                                     logging.info(f"ファイルコピー再試行 {retry_count+1}/{max_retries}: {file}")
                                 
+                                # 🚨 ファイルコピー前の最終確認
+                                logging.info(f"🚨 ファイルコピー実行前:")
+                                logging.info(f"   📂 source_file: {source_file}")
+                                logging.info(f"   📂 target_file: {target_file}")
+                                logging.info(f"   📏 source_size: {source_size:,} bytes")
+                                logging.info(f"   ✅ source exists: {os.path.exists(source_file)}")
+                                logging.info(f"   📁 target dir exists: {os.path.exists(os.path.dirname(target_file))}")
+                                logging.info(f"   🖥️ is EXE file: {file == '商品登録入力ツール.exe'}")
+                                logging.info(f"   🎯 is .new target: {target_file.endswith('.new')}")
+                                
                                 # ファイルコピー実行（チャンク方式で安全にコピー）
                                 if source_size > 10 * 1024 * 1024:  # 10MB以上の大きなファイル
+                                    logging.info(f"🔄 大きなファイルのチャンクコピー開始")
                                     self._copy_large_file(source_file, target_file, source_size)
                                 else:
+                                    logging.info(f"🔄 通常のファイルコピー開始")
                                     shutil.copy2(source_file, target_file)
+                                
+                                # 🚨 ファイルコピー後の確認
+                                logging.info(f"🚨 ファイルコピー実行後:")
+                                logging.info(f"   ✅ target exists: {os.path.exists(target_file)}")
+                                if os.path.exists(target_file):
+                                    actual_size = os.path.getsize(target_file)
+                                    logging.info(f"   📏 actual size: {actual_size:,} bytes")
+                                    logging.info(f"   ✅ size match: {actual_size == source_size}")
+                                    
+                                    # .newファイルの場合は特別な確認
+                                    if target_file.endswith('.new'):
+                                        logging.info(f"🔥🔥🔥 .NEWファイル作成成功: {target_file} 🔥🔥🔥")
+                                        logging.info(f"🔥 .NEWファイルサイズ: {actual_size:,} bytes")
+                                else:
+                                    logging.error(f"❌❌❌ ファイルコピー後にファイルが存在しません: {target_file}")
                                 
                                 # コピー成功した場合はループを抜ける
                                 break
@@ -706,30 +805,83 @@ class UpdateDownloader(QThread):
         
             logging.info(f"ファイル更新完了: {file_count}個のファイルを処理")
             
-            # 更新結果の検証
-            logging.info("=== 更新結果検証 ===")
+            # 🚨🚨🚨 最終結果検証 - 絶対確認モード 🚨🚨🚨
+            logging.info("=" * 80)
+            logging.info("🚨🚨🚨 最終結果検証 - 絶対確認モード 🚨🚨🚨")
+            logging.info("=" * 80)
             
-            # .newファイルの存在確認
+            # .newファイルの徹底確認
             new_exe_path = os.path.join(target_dir, '商品登録入力ツール.exe.new')
+            logging.info(f"🔍 期待される.newファイルパス: {new_exe_path}")
+            
             if os.path.exists(new_exe_path):
                 new_size = os.path.getsize(new_exe_path)
-                logging.info(f"✅ .newファイル確認: {new_exe_path} (サイズ: {new_size:,} bytes)")
+                logging.info(f"🔥🔥🔥 .NEWファイル確認成功! 🔥🔥🔥")
+                logging.info(f"✅ パス: {new_exe_path}")
+                logging.info(f"✅ サイズ: {new_size:,} bytes")
                 
                 # 元のexeファイルと比較
                 original_exe = os.path.join(target_dir, '商品登録入力ツール.exe')
                 if os.path.exists(original_exe):
                     original_size = os.path.getsize(original_exe)
                     logging.info(f"📊 サイズ比較: 旧={original_size:,} bytes, 新={new_size:,} bytes")
+                    size_diff = new_size - original_size
+                    logging.info(f"📊 サイズ差: {size_diff:,} bytes")
+                else:
+                    logging.warning(f"⚠️ 元のEXEファイルが見つかりません: {original_exe}")
                     
             else:
-                logging.error(f"❌ .newファイルが見つかりません: {new_exe_path}")
-                # ディレクトリ内容を確認
+                logging.error(f"❌❌❌ .NEWファイルが見つかりません! ❌❌❌")
+                logging.error(f"❌ 期待パス: {new_exe_path}")
+                
+                # 徹底的なディレクトリ確認
+                logging.info("🔍 ターゲットディレクトリの徹底確認:")
                 try:
                     all_files = os.listdir(target_dir)
+                    logging.info(f"📁 ディレクトリ内アイテム数: {len(all_files)}")
+                    
+                    # .newファイル検索
                     new_files = [f for f in all_files if f.endswith('.new')]
-                    logging.info(f"ディレクトリ内の.newファイル: {new_files}")
+                    logging.info(f"🔍 .newファイル数: {len(new_files)}")
+                    for new_file in new_files:
+                        full_path = os.path.join(target_dir, new_file)
+                        size = os.path.getsize(full_path)
+                        logging.info(f"  🔥 発見: {new_file} ({size:,} bytes)")
+                    
+                    # EXEファイル検索
+                    exe_files = [f for f in all_files if f.endswith('.exe')]
+                    logging.info(f"🔍 EXEファイル数: {len(exe_files)}")
+                    for exe_file in exe_files:
+                        full_path = os.path.join(target_dir, exe_file)
+                        size = os.path.getsize(full_path)
+                        logging.info(f"  ⚡ EXE: {exe_file} ({size:,} bytes)")
+                    
+                    # 全ファイル表示（最大20個）
+                    logging.info("📋 全ファイル/フォルダ一覧（最大20個）:")
+                    for i, item in enumerate(all_files[:20]):
+                        item_path = os.path.join(target_dir, item)
+                        if os.path.isfile(item_path):
+                            size = os.path.getsize(item_path)
+                            logging.info(f"  {i+1:2d}. 📄 {item} ({size:,} bytes)")
+                        else:
+                            logging.info(f"  {i+1:2d}. 📁 {item}/")
+                    
+                    if len(all_files) > 20:
+                        logging.info(f"  ... 他 {len(all_files)-20} 個のアイテム")
+                        
                 except Exception as e:
-                    logging.error(f"ディレクトリ確認エラー: {e}")
+                    logging.error(f"❌ ディレクトリ確認エラー: {e}")
+                
+                # 絶対パス確認
+                abs_target_dir = os.path.abspath(target_dir)
+                abs_new_path = os.path.abspath(new_exe_path)
+                logging.info(f"🔍 絶対パス確認:")
+                logging.info(f"  📁 ターゲットdir: {abs_target_dir}")
+                logging.info(f"  📄 .newファイル: {abs_new_path}")
+                logging.info(f"  ✅ ターゲットdir存在: {os.path.exists(abs_target_dir)}")
+                logging.info(f"  ✅ .newファイル存在: {os.path.exists(abs_new_path)}")
+            
+            logging.info("=" * 80)
             
             # C#フォルダの確認
             cs_dir = os.path.join(target_dir, 'C#')
@@ -844,6 +996,43 @@ class UpdateDownloader(QThread):
             critical_files = ['商品登録入力ツール.exe', 'product_app.py']
             important_files = ['constants.py', 'version.json']
             directory_markers = ['C#']  # 重要ディレクトリ
+            
+            # === 詳細な全ファイル探索 ===
+            logging.info("=== 全ファイル詳細探索 ===")
+            all_files_found = []
+            exe_files_found = []
+            for root, dirs, files in os.walk(extract_dir):
+                rel_path = os.path.relpath(root, extract_dir)
+                logging.info(f"📁 ディレクトリ: {rel_path}")
+                for file in files:
+                    all_files_found.append(f"{rel_path}/{file}")
+                    if file.endswith('.exe'):
+                        exe_files_found.append(f"{rel_path}/{file}")
+                        logging.info(f"  🔥 EXEファイル発見: {file}")
+                    logging.info(f"  📄 {file}")
+            
+            logging.info(f"=== 検索結果サマリー ===")
+            logging.info(f"総ファイル数: {len(all_files_found)}")
+            logging.info(f"EXEファイル数: {len(exe_files_found)}")
+            logging.info(f"EXEファイルリスト: {exe_files_found}")
+            
+            # 商品登録入力ツール.exe を特別検索
+            target_exe_paths = []
+            for root, dirs, files in os.walk(extract_dir):
+                for file in files:
+                    if file == '商品登録入力ツール.exe':
+                        full_path = os.path.join(root, file)
+                        target_exe_paths.append(full_path)
+                        logging.info(f"🎯 ターゲットEXE発見: {full_path}")
+            
+            if target_exe_paths:
+                logging.info(f"✅ 商品登録入力ツール.exe が {len(target_exe_paths)} 箇所で発見されました")
+                # 最初に見つかったものを使用
+                target_dir = os.path.dirname(target_exe_paths[0])
+                logging.info(f"🚀 強制的にターゲットディレクトリを設定: {target_dir}")
+                return target_dir
+            else:
+                logging.error(f"❌ 商品登録入力ツール.exe が見つかりません！")
             
             best_candidate = None
             best_score = 0
