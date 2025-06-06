@@ -22,7 +22,7 @@ from PyQt5.QtCore import QThread, pyqtSignal, QObject, QTimer
 from PyQt5.QtWidgets import QMessageBox, QProgressDialog, QPushButton, QApplication
 
 # 現在のアプリケーションバージョン
-CURRENT_VERSION = "2.6.1"
+CURRENT_VERSION = "2.6.0"
 
 # GitHub上のversion.jsonのURL
 # 株式会社大宝家具の商品登録入力ツール
@@ -1977,9 +1977,10 @@ def simple_auto_update(parent, download_url, new_version):
         response = requests.get(download_url, stream=True)
         total_size = int(response.headers.get('content-length', 0))
         
-        # 元のツールと同じディレクトリにダウンロード
+        # 元のツールの親ディレクトリにダウンロード
         current_dir = os.path.dirname(os.path.abspath(sys.argv[0])) if getattr(sys, 'frozen', False) else os.getcwd()
-        temp_zip = os.path.join(current_dir, f"ProductRegisterTool-v{new_version}.zip")
+        parent_dir = os.path.dirname(current_dir)
+        temp_zip = os.path.join(parent_dir, f"ProductRegisterTool-v{new_version}.zip")
         
         with open(temp_zip, 'wb') as f:
             downloaded = 0
@@ -1997,8 +1998,8 @@ def simple_auto_update(parent, download_url, new_version):
         progress.setValue(60)
         QApplication.processEvents()
         
-        # 2. ZIPを展開（元のツールと同じディレクトリに）
-        extract_dir = os.path.join(current_dir, f"ProductRegisterTool-v{new_version}")
+        # 2. ZIPを展開（元のツールの親ディレクトリに）
+        extract_dir = os.path.join(parent_dir, f"ProductRegisterTool-v{new_version}")
         if os.path.exists(extract_dir):
             shutil.rmtree(extract_dir)
             
