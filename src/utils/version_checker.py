@@ -19,7 +19,7 @@ from PyQt5.QtCore import QThread, pyqtSignal, QObject, QTimer
 from PyQt5.QtWidgets import QMessageBox, QProgressDialog, QPushButton, QApplication
 
 # 現在のアプリケーションバージョン
-CURRENT_VERSION = "2.4.6"
+CURRENT_VERSION = "2.4.7"
 
 # GitHub上のversion.jsonのURL
 # 株式会社大宝家具の商品登録入力ツール
@@ -615,6 +615,7 @@ class UpdateDownloader(QThread):
                                 updated_exe = True
                                 self.status.emit(f"実行ファイルを更新中: {file}")
                                 logging.info(f"実行ファイル更新: {source_file} -> {target_file}")
+                                logging.info(f"⚡ 重要: .newファイルを作成します: {target_file}")
                         else:
                             # 開発環境の場合、実行中のスクリプトと同じ場合
                             if os.path.abspath(target_file) == current_exe:
@@ -1336,8 +1337,14 @@ class VersionChecker:
             exe_name = os.path.basename(exe_path)
             script_path = os.path.join(app_dir, 'update_restart.bat')
             
-            # パスの存在確認
-            new_file_path = exe_path + '.new'
+            # パスの存在確認 - 重要: _update_filesメソッドと同じロジックで.newファイルパスを構築
+            if getattr(sys, 'frozen', False):
+                # PyInstallerでビルドされた場合は、target_dirベースで.newファイルパスを構築
+                # _update_filesメソッドの line 614 と同じロジック
+                new_file_path = os.path.join(app_dir, '商品登録入力ツール.exe.new')
+            else:
+                # 開発環境の場合
+                new_file_path = exe_path + '.new'
             
             logging.info(f"=== 再起動スクリプト情報 ===")
             logging.info(f"アプリディレクトリ: {app_dir}")
@@ -1345,6 +1352,20 @@ class VersionChecker:
             logging.info(f".newファイルパス: {new_file_path}")
             logging.info(f"スクリプトパス: {script_path}")
             logging.info(f".newファイル存在: {os.path.exists(new_file_path)}")
+            
+            # 追加のデバッグ情報
+            if not os.path.exists(new_file_path):
+                logging.warning(f"⚠️ .newファイルが見つかりません！")
+                # app_dir内の.newファイルを検索
+                try:
+                    import glob
+                    new_files = glob.glob(os.path.join(app_dir, "*.new"))
+                    if new_files:
+                        logging.info(f"発見された.newファイル: {new_files}")
+                    else:
+                        logging.error(f"❌ {app_dir}内に.newファイルが存在しません")
+                except Exception as e:
+                    logging.error(f"glob検索エラー: {e}")
             
             # 現在のプロセスIDを取得
             current_pid = os.getpid()
@@ -1373,7 +1394,7 @@ if exist "{new_file_path}" (
     echo   ✗ エラー: .newファイルが見つかりません
     echo   確認パス: {new_file_path}
     echo   ディレクトリ内容:
-    dir "{exe_dir}\\*.new" 2>nul
+    dir "{app_dir}\\*.new" 2>nul
     if errorlevel 1 echo   （.newファイルなし）
     echo.
     echo   更新を中止します。元のアプリケーションを起動します...
