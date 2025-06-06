@@ -19,7 +19,7 @@ from PyQt5.QtCore import QThread, pyqtSignal, QObject, QTimer
 from PyQt5.QtWidgets import QMessageBox, QProgressDialog, QPushButton, QApplication
 
 # 現在のアプリケーションバージョン
-CURRENT_VERSION = "2.6.1"
+CURRENT_VERSION = "2.6.0"
 
 # GitHub上のversion.jsonのURL
 # 株式会社大宝家具の商品登録入力ツール
@@ -1981,7 +1981,9 @@ def simple_auto_update(parent, download_url, new_version):
         response = requests.get(download_url, stream=True)
         total_size = int(response.headers.get('content-length', 0))
         
-        temp_zip = os.path.join(tempfile.gettempdir(), f"update_v{new_version}.zip")
+        # 元のツールと同じディレクトリにダウンロード
+        current_dir = os.path.dirname(os.path.abspath(sys.argv[0])) if getattr(sys, 'frozen', False) else os.getcwd()
+        temp_zip = os.path.join(current_dir, f"ProductRegisterTool-v{new_version}.zip")
         
         with open(temp_zip, 'wb') as f:
             downloaded = 0
@@ -1999,8 +2001,8 @@ def simple_auto_update(parent, download_url, new_version):
         progress.setValue(60)
         QApplication.processEvents()
         
-        # 2. ZIPを展開
-        extract_dir = os.path.join(tempfile.gettempdir(), f"ProductRegisterTool_v{new_version}")
+        # 2. ZIPを展開（元のツールと同じディレクトリに）
+        extract_dir = os.path.join(current_dir, f"ProductRegisterTool-v{new_version}")
         if os.path.exists(extract_dir):
             import shutil
             shutil.rmtree(extract_dir)
@@ -2009,10 +2011,47 @@ def simple_auto_update(parent, download_url, new_version):
             zip_ref.extractall(extract_dir)
         
         # 展開されたフォルダ内のメインフォルダを見つける
-        subdirs = [d for d in os.listdir(extract_dir) if os.path.isdir(os.path.join(extract_dir, d))]
-        if subdirs:
-            main_folder = os.path.join(extract_dir, subdirs[0])
-        else:
+        logging.info(f"🔍 展開ディレクトリ内容確認: {extract_dir}")
+        try:
+            all_items = os.listdir(extract_dir)
+            logging.info(f"📁 展開されたアイテム: {all_items}")
+            
+            subdirs = [d for d in all_items if os.path.isdir(os.path.join(extract_dir, d))]
+            files = [f for f in all_items if os.path.isfile(os.path.join(extract_dir, f))]
+            
+            logging.info(f"📁 サブディレクトリ: {subdirs}")
+            logging.info(f"📄 ファイル: {files}")
+            
+            # 実行ファイルを直接探す
+            exe_found = False
+            main_folder = extract_dir
+            
+            # まず、直接実行ファイルがあるかチェック
+            direct_exe = os.path.join(extract_dir, "商品登録入力ツール.exe")
+            if os.path.exists(direct_exe):
+                logging.info(f"🔥 実行ファイルを直接発見: {direct_exe}")
+                main_folder = extract_dir
+                exe_found = True
+            else:
+                # サブディレクトリを検索
+                for subdir in subdirs:
+                    subdir_path = os.path.join(extract_dir, subdir)
+                    sub_exe = os.path.join(subdir_path, "商品登録入力ツール.exe")
+                    if os.path.exists(sub_exe):
+                        logging.info(f"🔥 実行ファイルをサブディレクトリで発見: {sub_exe}")
+                        main_folder = subdir_path
+                        exe_found = True
+                        break
+                
+                if not exe_found and subdirs:
+                    # フォールバック: 最初のサブディレクトリを使用
+                    main_folder = os.path.join(extract_dir, subdirs[0])
+                    logging.info(f"⚠️ フォールバック: 最初のサブディレクトリを使用: {main_folder}")
+            
+            logging.info(f"🎯 選択されたメインフォルダ: {main_folder}")
+            
+        except Exception as e:
+            logging.error(f"❌ 展開ディレクトリ確認エラー: {e}")
             main_folder = extract_dir
             
         progress.setValue(80)
@@ -2040,21 +2079,77 @@ def simple_auto_update(parent, download_url, new_version):
             "更新完了",
             f"更新が完了しました！\n\n"
             f"新しいバージョン v{new_version} を起動します。\n"
-            f"現在のアプリを終了し、新しいバージョンに切り替わります。\n\n"
-            f"旧フォルダは後で手動で削除してください。"
+            f"新しいフォルダ: {main_folder}\n\n"
+            f"※起動に失敗した場合は、上記フォルダの実行ファイルを手動で起動してください。"
         )
         
         # 5. 新バージョン起動 & 現在終了
         new_exe = os.path.join(main_folder, "商品登録入力ツール.exe")
+        logging.info(f"🔍 実行ファイル最終確認: {new_exe}")
+        logging.info(f"🔍 実行ファイル存在: {os.path.exists(new_exe)}")
+        
         if os.path.exists(new_exe):
-            import subprocess
-            subprocess.Popen([new_exe], cwd=main_folder)
-            QApplication.quit()
-        else:
-            QMessageBox.warning(parent, "エラー", "新しい実行ファイルが見つかりません。")
+            logging.info(f"🚀 新バージョン起動: {new_exe}")
             
-        # 一時ファイルを削除
-        os.remove(temp_zip)
+            try:
+                import subprocess
+                import os
+                
+                # Windowsの場合、絶対パスで起動
+                abs_exe = os.path.abspath(new_exe)
+                abs_cwd = os.path.abspath(main_folder)
+                
+                logging.info(f"🚀 起動コマンド: {abs_exe}")
+                logging.info(f"🚀 作業ディレクトリ: {abs_cwd}")
+                
+                # 新しいプロセスをバックグラウンドで起動
+                subprocess.Popen([abs_exe], 
+                               cwd=abs_cwd,
+                               creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if hasattr(subprocess, 'CREATE_NEW_PROCESS_GROUP') else 0)
+                
+                # 少し待ってから終了
+                import time
+                time.sleep(1)
+                
+                logging.info("🚀 新バージョン起動完了、現在のアプリを終了")
+                QApplication.quit()
+                
+            except Exception as start_error:
+                logging.error(f"❌ 新バージョン起動エラー: {start_error}")
+                error_msg = f"新しいバージョンの起動に失敗しました。\n\n"
+                error_msg += f"エラー: {start_error}\n\n"
+                error_msg += f"手動で以下のファイルを実行してください:\n{new_exe}"
+                QMessageBox.warning(parent, "起動エラー", error_msg)
+        else:
+            # 詳細なエラー情報
+            error_msg = f"新しい実行ファイルが見つかりません。\n\n"
+            error_msg += f"期待されるパス: {new_exe}\n"
+            error_msg += f"メインフォルダ: {main_folder}\n"
+            error_msg += f"一時展開先: {extract_dir}\n\n"
+            error_msg += f"手動で以下のフォルダを確認してください:\n{extract_dir}"
+            
+            logging.error(f"❌ 実行ファイルが見つかりません: {new_exe}")
+            logging.error(f"❌ メインフォルダ内容:")
+            try:
+                if os.path.exists(main_folder):
+                    items = os.listdir(main_folder)
+                    for item in items:
+                        item_path = os.path.join(main_folder, item)
+                        if os.path.isfile(item_path):
+                            logging.error(f"  📄 {item}")
+                        else:
+                            logging.error(f"  📁 {item}/")
+                else:
+                    logging.error(f"❌ メインフォルダが存在しません: {main_folder}")
+            except Exception as e:
+                logging.error(f"❌ フォルダ内容確認エラー: {e}")
+            
+            QMessageBox.warning(parent, "更新エラー", error_msg)
+            
+        # デバッグのため一時ファイルを保持
+        logging.info(f"📁 ダウンロードファイル保存先: {temp_zip}")
+        logging.info(f"📁 展開フォルダ保存先: {extract_dir}")
+        # os.remove(temp_zip)  # デバッグ用にコメントアウト
         
     except Exception as e:
         logging.error(f"自動更新エラー: {e}")
