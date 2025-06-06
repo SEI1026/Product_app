@@ -19,7 +19,7 @@ from PyQt5.QtCore import QThread, pyqtSignal, QObject, QTimer
 from PyQt5.QtWidgets import QMessageBox, QProgressDialog, QPushButton, QApplication
 
 # 現在のアプリケーションバージョン
-CURRENT_VERSION = "2.5.8"
+CURRENT_VERSION = "2.5.9"
 
 # GitHub上のversion.jsonのURL
 # 株式会社大宝家具の商品登録入力ツール
@@ -31,11 +31,35 @@ class VersionInfo:
     """バージョン情報を格納するクラス"""
     
     def __init__(self, version_data: Dict[str, Any]):
-        self.version = version_data.get("version", "0.0.0")
-        self.release_date = version_data.get("release_date", "")
-        self.download_url = version_data.get("download_url", "")
-        self.changelog = version_data.get("changelog", {})
-        self.minimum_required_version = version_data.get("minimum_required_version", "0.0.0")
+        self.version = self._sanitize_string(version_data.get("version", "0.0.0"))
+        self.release_date = self._sanitize_string(version_data.get("release_date", ""))
+        self.download_url = self._sanitize_string(version_data.get("download_url", ""))
+        self.changelog = self._sanitize_changelog(version_data.get("changelog", {}))
+        self.minimum_required_version = self._sanitize_string(version_data.get("minimum_required_version", "0.0.0"))
+    
+    def _sanitize_string(self, text: str) -> str:
+        """文字列から不正な文字を除去"""
+        if not isinstance(text, str):
+            return str(text)
+        # 文字化けや不正な文字を置換
+        import re
+        # 制御文字を除去
+        text = re.sub(r'[\x00-\x1f\x7f-\x9f]', '', text)
+        # 不正なUnicode文字を?に置換
+        text = text.encode('utf-8', errors='replace').decode('utf-8')
+        return text
+    
+    def _sanitize_changelog(self, changelog: Dict[str, Any]) -> Dict[str, Any]:
+        """変更履歴の文字列を全てサニタイズ"""
+        sanitized = {}
+        for version, changes in changelog.items():
+            sanitized[version] = {}
+            for category, items in changes.items():
+                if isinstance(items, list):
+                    sanitized[version][category] = [self._sanitize_string(item) for item in items]
+                else:
+                    sanitized[version][category] = self._sanitize_string(items)
+        return sanitized
         
     def get_latest_changes(self) -> str:
         """最新バージョンの変更点を取得"""
@@ -1158,7 +1182,37 @@ class VersionChecker:
                     
                 raw_data = response.read()
                 self.logger.info(f"バージョンデータ取得成功: {len(raw_data)} bytes")
-                version_data = json.loads(raw_data.decode('utf-8'))
+                
+                # エンコーディングエラーを回避するため、複数のエンコーディングを試す
+                encodings = ['utf-8', 'utf-8-sig', 'shift_jis', 'cp932']
+                decoded_data = None
+                
+                for encoding in encodings:
+                    try:
+                        decoded_data = raw_data.decode(encoding)
+                        self.logger.info(f"エンコーディング成功: {encoding}")
+                        break
+                    except UnicodeDecodeError:
+                        self.logger.warning(f"エンコーディング失敗: {encoding}")
+                        continue
+                
+                if decoded_data is None:
+                    # どのエンコーディングでも失敗した場合、エラーを無視してデコード
+                    decoded_data = raw_data.decode('utf-8', errors='replace')
+                    self.logger.warning("エンコーディングエラーを無視してデコードしました")
+                
+                # JSONパース時にエラーが発生した場合の対策
+                try:
+                    version_data = json.loads(decoded_data)
+                except json.JSONDecodeError as e:
+                    # 文字化けを含む可能性があるため、正規表現で修正を試みる
+                    import re
+                    # 文字化けしたテキストを除去または置換
+                    cleaned_data = re.sub(r'[\x00-\x1f\x7f-\x9f]', '', decoded_data)
+                    # 不正なUnicode文字を置換
+                    cleaned_data = re.sub(r'[^\x00-\x7F\u3000-\u303F\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FAF\uFF00-\uFFEF]+', '?', cleaned_data)
+                    self.logger.warning(f"JSONパースエラー。クリーニング後に再試行: {e}")
+                    version_data = json.loads(cleaned_data)
             
             version_info = VersionInfo(version_data)
             remote_version = version_info.version
