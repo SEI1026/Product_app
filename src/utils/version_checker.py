@@ -1909,14 +1909,165 @@ rm -f "$0"
     
 
 
+def check_for_updates_simple(parent=None, silent=False):
+    """
+    シンプルな更新チェック（通知のみ）
+    """
+    try:
+        import requests
+        import webbrowser
+        from PyQt5.QtWidgets import QMessageBox
+        
+        # GitHub APIから最新バージョンを取得
+        response = requests.get("https://api.github.com/repos/SEI1026/Product_app/releases/latest", timeout=5)
+        latest = response.json()
+        latest_version = latest['tag_name'].replace('v', '')
+        
+        logging.info(f"バージョンチェック: 現在={CURRENT_VERSION}, 最新={latest_version}")
+        
+        if latest_version > CURRENT_VERSION:
+            # 新しいバージョンがある場合
+            result = QMessageBox.question(
+                parent, 
+                "更新のお知らせ", 
+                f"新しいバージョン v{latest_version} が利用可能です。\n\n"
+                f"現在のバージョン: v{CURRENT_VERSION}\n"
+                f"最新のバージョン: v{latest_version}\n\n"
+                f"自動更新を実行しますか？",
+                QMessageBox.Yes | QMessageBox.No
+            )
+            
+            if result == QMessageBox.Yes:
+                # GitHubリリースからダウンロードURLを構築
+                download_url = f"https://github.com/SEI1026/Product_app/releases/download/v{latest_version}/ProductRegisterTool-v{latest_version}.zip"
+                simple_auto_update(parent, download_url, latest_version)
+                
+        elif not silent:
+            QMessageBox.information(
+                parent,
+                "更新確認",
+                f"お使いのバージョン v{CURRENT_VERSION} は最新です。"
+            )
+            
+    except Exception as e:
+        logging.error(f"更新チェックエラー: {e}")
+        if not silent:
+            QMessageBox.warning(
+                parent,
+                "更新確認エラー", 
+                "更新の確認中にエラーが発生しました。\n"
+                "インターネット接続を確認してください。"
+            )
+
+
+def simple_auto_update(parent, download_url, new_version):
+    """
+    シンプルな自動更新（データ移行付き）
+    """
+    import tempfile
+    import zipfile
+    import requests
+    from PyQt5.QtWidgets import QProgressDialog, QApplication
+    
+    try:
+        # プログレスダイアログ
+        progress = QProgressDialog("更新をダウンロード中...", "キャンセル", 0, 100, parent)
+        progress.setWindowModality(2)  # Qt.WindowModal
+        progress.show()
+        QApplication.processEvents()
+        
+        # 1. 新バージョンをダウンロード
+        logging.info(f"更新ダウンロード開始: {download_url}")
+        response = requests.get(download_url, stream=True)
+        total_size = int(response.headers.get('content-length', 0))
+        
+        temp_zip = os.path.join(tempfile.gettempdir(), f"update_v{new_version}.zip")
+        
+        with open(temp_zip, 'wb') as f:
+            downloaded = 0
+            for chunk in response.iter_content(chunk_size=8192):
+                if progress.wasCanceled():
+                    return
+                    
+                f.write(chunk)
+                downloaded += len(chunk)
+                if total_size > 0:
+                    progress.setValue(int(downloaded * 50 / total_size))  # 50%まで
+                QApplication.processEvents()
+        
+        progress.setLabelText("更新ファイルを展開中...")
+        progress.setValue(60)
+        QApplication.processEvents()
+        
+        # 2. ZIPを展開
+        extract_dir = os.path.join(tempfile.gettempdir(), f"ProductRegisterTool_v{new_version}")
+        if os.path.exists(extract_dir):
+            import shutil
+            shutil.rmtree(extract_dir)
+            
+        with zipfile.ZipFile(temp_zip, 'r') as zip_ref:
+            zip_ref.extractall(extract_dir)
+        
+        # 展開されたフォルダ内のメインフォルダを見つける
+        subdirs = [d for d in os.listdir(extract_dir) if os.path.isdir(os.path.join(extract_dir, d))]
+        if subdirs:
+            main_folder = os.path.join(extract_dir, subdirs[0])
+        else:
+            main_folder = extract_dir
+            
+        progress.setValue(80)
+        QApplication.processEvents()
+        
+        # 3. ユーザーデータを新フォルダにコピー
+        progress.setLabelText("ユーザーデータを移行中...")
+        user_files = ["item_manage.xlsm"]
+        current_dir = os.path.dirname(os.path.abspath(sys.argv[0])) if getattr(sys, 'frozen', False) else os.getcwd()
+        
+        for file in user_files:
+            source_file = os.path.join(current_dir, file)
+            if os.path.exists(source_file):
+                dest_file = os.path.join(main_folder, file)
+                import shutil
+                shutil.copy2(source_file, dest_file)
+                logging.info(f"ユーザーデータをコピー: {source_file} → {dest_file}")
+        
+        progress.setValue(100)
+        progress.close()
+        
+        # 4. 完了通知と新バージョン起動
+        QMessageBox.information(
+            parent,
+            "更新完了",
+            f"更新が完了しました！\n\n"
+            f"新しいバージョン v{new_version} を起動します。\n"
+            f"現在のアプリを終了し、新しいバージョンに切り替わります。\n\n"
+            f"旧フォルダは後で手動で削除してください。"
+        )
+        
+        # 5. 新バージョン起動 & 現在終了
+        new_exe = os.path.join(main_folder, "商品登録入力ツール.exe")
+        if os.path.exists(new_exe):
+            import subprocess
+            subprocess.Popen([new_exe], cwd=main_folder)
+            QApplication.quit()
+        else:
+            QMessageBox.warning(parent, "エラー", "新しい実行ファイルが見つかりません。")
+            
+        # 一時ファイルを削除
+        os.remove(temp_zip)
+        
+    except Exception as e:
+        logging.error(f"自動更新エラー: {e}")
+        QMessageBox.critical(
+            parent,
+            "更新エラー",
+            f"更新中にエラーが発生しました:\n{e}\n\n"
+            f"手動でGitHubから最新版をダウンロードしてください。"
+        )
+
+
 def check_for_updates_on_startup(parent=None):
     """
-    起動時の自動更新チェック（非同期）
+    起動時の自動更新チェック（新しいシンプル版）
     """
-    checker = VersionChecker(parent)
-    version_info = checker.check_for_updates(silent=True)
-    
-    if version_info:
-        # 新しいバージョンがある場合
-        if checker.prompt_for_update(version_info):
-            checker.download_and_install_update(version_info)
+    check_for_updates_simple(parent, silent=True)
