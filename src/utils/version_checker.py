@@ -19,7 +19,7 @@ from PyQt5.QtCore import QThread, pyqtSignal, QObject, QTimer
 from PyQt5.QtWidgets import QMessageBox, QProgressDialog, QPushButton, QApplication
 
 # 現在のアプリケーションバージョン
-CURRENT_VERSION = "2.5.0"
+CURRENT_VERSION = "2.5.1"
 
 # GitHub上のversion.jsonのURL
 # 株式会社大宝家具の商品登録入力ツール
@@ -1335,7 +1335,7 @@ class VersionChecker:
                 
             exe_dir = os.path.dirname(exe_path)
             exe_name = os.path.basename(exe_path)
-            script_path = os.path.join(app_dir, 'update_restart.bat')
+            script_path = os.path.join(app_dir, 'update_restart.ps1')
             
             # パスの存在確認 - 重要: _update_filesメソッドと同じロジックで.newファイルパスを構築
             if getattr(sys, 'frozen', False):
@@ -1370,104 +1370,129 @@ class VersionChecker:
             # 現在のプロセスIDを取得
             current_pid = os.getpid()
             
-            # バッチファイルを作成（CP932エンコーディングで日本語対応）
-            with open(script_path, 'w', encoding='cp932') as f:
-                f.write(f'''@echo off
-chcp 65001 >nul
-echo =======================================
-echo    Product Registration Tool Auto Update
-echo =======================================
-echo.
-echo Start Time: %date% %time%
-echo Process ID: {current_pid}
-echo App Directory: {app_dir}
-echo Executable: {exe_path}
-echo New File: {new_file_path}
-echo.
+            # PowerShellスクリプトを作成（より確実な実行のため）
+            with open(script_path, 'w', encoding='utf-8-sig') as f:
+                f.write(f'''# Product Registration Tool Auto Update Script
+Write-Host "=======================================" -ForegroundColor Green
+Write-Host "   Product Registration Tool Auto Update" -ForegroundColor Green
+Write-Host "=======================================" -ForegroundColor Green
+Write-Host ""
+Write-Host "Start Time: $(Get-Date)" -ForegroundColor Yellow
+Write-Host "Process ID: {current_pid}" -ForegroundColor Yellow
+Write-Host "App Directory: {app_dir}" -ForegroundColor Yellow
+Write-Host "Executable: {exe_path}" -ForegroundColor Yellow
+Write-Host "New File: {new_file_path}" -ForegroundColor Yellow
+Write-Host ""
 
-REM Check for .new file
-echo [1/4] Checking update file...
-if exist "{new_file_path}" (
-    echo   ✓ New file exists
-    dir "{new_file_path}" | find /v "Volume"
-) else (
-    echo   ✗ Error: New file not found
-    echo   Expected path: {new_file_path}
-    echo   Directory contents:
-    dir "{app_dir}\\*.new" 2>nul
-    if errorlevel 1 echo   (No .new files found)
-    echo.
-    echo   Update cancelled. Starting original application...
-    start "" "{exe_path}" 2>nul
-    if errorlevel 1 (
-        echo   ✗ Failed to start application
-        echo   Please start manually: {exe_path}
-    )
-    pause
-    goto end
-)
+# Check for .new file
+Write-Host "[1/4] Checking update file..." -ForegroundColor Cyan
+if (Test-Path "{new_file_path}") {{
+    Write-Host "  ✓ New file exists" -ForegroundColor Green
+    $newFileSize = (Get-Item "{new_file_path}").Length
+    Write-Host "  File size: $($newFileSize / 1MB) MB" -ForegroundColor Green
+}} else {{
+    Write-Host "  ✗ Error: New file not found" -ForegroundColor Red
+    Write-Host "  Expected path: {new_file_path}" -ForegroundColor Red
+    Write-Host "  Directory contents:" -ForegroundColor Red
+    Get-ChildItem "{app_dir}" -Filter "*.new" | ForEach-Object {{ Write-Host "    $($_.Name)" }}
+    if (-not (Get-ChildItem "{app_dir}" -Filter "*.new")) {{
+        Write-Host "    (No .new files found)" -ForegroundColor Red
+    }}
+    Write-Host ""
+    Write-Host "  Update cancelled. Starting original application..." -ForegroundColor Yellow
+    Start-Process "{exe_path}" -ErrorAction SilentlyContinue
+    if ($?) {{
+        Write-Host "  ✓ Application started" -ForegroundColor Green
+    }} else {{
+        Write-Host "  ✗ Failed to start application" -ForegroundColor Red
+        Write-Host "  Please start manually: {exe_path}" -ForegroundColor Red
+    }}
+    Read-Host "Press Enter to continue"
+    exit 1
+}}
 
-echo [2/4] Waiting for process to end...
-REM Wait for current process to end (max 30 seconds)
-set /a count=0
-:wait_exit
-tasklist /FI "PID eq {current_pid}" 2>nul | find "{current_pid}" >nul
-if errorlevel 1 goto process_ended
-if %count% geq 30 (
-    echo   ⚠ Timeout: Forcing process termination
-    taskkill /f /pid {current_pid} >nul 2>&1
-    timeout /t 2 /nobreak > nul
-    goto process_ended
-)
-timeout /t 1 /nobreak > nul
-set /a count+=1
-echo   Waiting... (%count%/30 seconds)
-goto wait_exit
+# Wait for process to end
+Write-Host "[2/4] Waiting for process to end..." -ForegroundColor Cyan
+$maxWait = 30
+$count = 0
+while ($count -lt $maxWait) {{
+    $process = Get-Process -Id {current_pid} -ErrorAction SilentlyContinue
+    if (-not $process) {{
+        Write-Host "  ✓ Process termination confirmed" -ForegroundColor Green
+        break
+    }}
+    if ($count -ge $maxWait) {{
+        Write-Host "  ⚠ Timeout: Forcing process termination" -ForegroundColor Yellow
+        Stop-Process -Id {current_pid} -Force -ErrorAction SilentlyContinue
+        Start-Sleep -Seconds 2
+        break
+    }}
+    Start-Sleep -Seconds 1
+    $count++
+    Write-Host "  Waiting... ($count/$maxWait seconds)" -ForegroundColor Gray
+}}
 
-:process_ended
-echo   ✓ Process termination confirmed
+# Replace file
+Write-Host "[3/4] Replacing file..." -ForegroundColor Cyan
+$maxRetries = 3
+$attempt = 0
+$success = $false
 
-echo [3/4] Replacing file...
-:retry
-move /y "{new_file_path}" "{exe_path}" >nul 2>&1
-if errorlevel 1 (
-    echo   ✗ File replacement failed
-    echo   Retrying...
-    timeout /t 2 /nobreak > nul
-    goto retry
-) else (
-    echo   ✓ File replacement completed
-)
+while ($attempt -lt $maxRetries -and -not $success) {{
+    try {{
+        Move-Item "{new_file_path}" "{exe_path}" -Force -ErrorAction Stop
+        Write-Host "  ✓ File replacement completed" -ForegroundColor Green
+        $success = $true
+    }} catch {{
+        $attempt++
+        Write-Host "  ✗ File replacement failed (attempt $attempt/$maxRetries)" -ForegroundColor Red
+        Write-Host "  Error: $($_.Exception.Message)" -ForegroundColor Red
+        if ($attempt -lt $maxRetries) {{
+            Write-Host "  Retrying in 2 seconds..." -ForegroundColor Yellow
+            Start-Sleep -Seconds 2
+        }}
+    }}
+}}
 
-echo [4/4] Starting application...
-echo   Start path: {exe_path}
-start "" "{exe_path}"
-if errorlevel 1 (
-    echo   ✗ Failed to start application
-    echo   Please start manually: {exe_path}
-    pause
-) else (
-    echo   ✓ Application started successfully
-)
+if (-not $success) {{
+    Write-Host "  ✗ Failed to replace file after $maxRetries attempts" -ForegroundColor Red
+    Read-Host "Press Enter to continue"
+    exit 1
+}}
 
-:end
-echo.
-echo Update process completed.
-echo This window will close automatically in 3 seconds...
-timeout /t 3 /nobreak > nul
-del "%~f0"
+# Start application
+Write-Host "[4/4] Starting application..." -ForegroundColor Cyan
+Write-Host "  Start path: {exe_path}" -ForegroundColor Gray
+try {{
+    Start-Process "{exe_path}" -ErrorAction Stop
+    Write-Host "  ✓ Application started successfully" -ForegroundColor Green
+}} catch {{
+    Write-Host "  ✗ Failed to start application" -ForegroundColor Red
+    Write-Host "  Please start manually: {exe_path}" -ForegroundColor Red
+    Read-Host "Press Enter to continue"
+    exit 1
+}}
+
+Write-Host ""
+Write-Host "Update process completed successfully!" -ForegroundColor Green
+Write-Host "This window will close automatically in 3 seconds..." -ForegroundColor Yellow
+Start-Sleep -Seconds 3
+
+# Clean up script file
+Remove-Item $MyInvocation.MyCommand.Path -Force -ErrorAction SilentlyContinue
 ''')
             
-            # バッチファイルを実行（デバッグのためコンソール表示）
+            # PowerShellスクリプトを実行（デバッグのためコンソール表示）
             # Windows環境でのみ実行
             try:
+                # PowerShellを管理者権限で実行
                 # CREATE_NEW_CONSOLE = 0x00000010
-                subprocess.Popen(['cmd', '/c', script_path], 
-                               creationflags=0x00000010)
-                logging.info("✅ 再起動スクリプト実行開始")
+                powershell_cmd = ['powershell.exe', '-ExecutionPolicy', 'Bypass', '-File', script_path]
+                subprocess.Popen(powershell_cmd, creationflags=0x00000010)
+                logging.info("✅ PowerShell再起動スクリプト実行開始")
             except (ValueError, OSError) as e:
                 # Linux等での実行時はスクリプト生成のみ
-                logging.info(f"ℹ️ 再起動スクリプト生成完了（実行は次回Windows環境で）: {e}")
+                logging.info(f"ℹ️ PowerShellスクリプト生成完了（実行は次回Windows環境で）: {e}")
                 if not sys.platform.startswith('win'):
                     logging.info("  → Linuxテスト環境のため、スクリプト実行をスキップしました")
             
