@@ -22,7 +22,7 @@ from PyQt5.QtCore import QThread, pyqtSignal, QObject, QTimer
 from PyQt5.QtWidgets import QMessageBox, QProgressDialog, QPushButton, QApplication
 
 # 現在のアプリケーションバージョン
-CURRENT_VERSION = "2.6.1"
+CURRENT_VERSION = "2.6.2"
 
 # GitHub上のversion.jsonのURL
 # 株式会社大宝家具の商品登録入力ツール
@@ -1977,10 +1977,38 @@ def simple_auto_update(parent, download_url, new_version):
         response = requests.get(download_url, stream=True)
         total_size = int(response.headers.get('content-length', 0))
         
-        # 元のツールの親ディレクトリにダウンロード
+        # 元のツールの親ディレクトリにダウンロード（権限チェック付き）
         current_dir = os.path.dirname(os.path.abspath(sys.argv[0])) if getattr(sys, 'frozen', False) else os.getcwd()
         parent_dir = os.path.dirname(current_dir)
-        temp_zip = os.path.join(parent_dir, f"ProductRegisterTool-v{new_version}.zip")
+        
+        # 親ディレクトリへの書き込み権限をチェック
+        try:
+            # テスト用一時ファイルで書き込み権限を確認
+            test_file = os.path.join(parent_dir, f"test_write_{os.getpid()}.tmp")
+            with open(test_file, 'w') as f:
+                f.write('test')
+            os.remove(test_file)
+            download_dir = parent_dir
+            logging.info(f"親ディレクトリへの書き込み権限OK: {parent_dir}")
+        except (PermissionError, OSError) as e:
+            logging.warning(f"親ディレクトリ権限なし({parent_dir}): {e}")
+            
+            # UAC昇格を試行
+            if _try_uac_elevation(parent_dir, new_version, download_url):
+                logging.info("UAC昇格による更新が完了しました")
+                return  # UAC昇格で成功した場合はここで終了
+            
+            # UAC昇格が失敗または拒否された場合はフォールバック
+            download_dir = tempfile.gettempdir()
+            logging.info(f"フォールバック: 一時ディレクトリを使用: {download_dir}")
+            QMessageBox.information(
+                parent,
+                "保存場所の変更",
+                f"管理者権限が取得できないため、更新ファイルを一時フォルダに保存します:\n{download_dir}\n\n"
+                f"※完了後、手動で適切な場所に移動してください。"
+            )
+        
+        temp_zip = os.path.join(download_dir, f"ProductRegisterTool-v{new_version}.zip")
         
         with open(temp_zip, 'wb') as f:
             downloaded = 0
@@ -1998,8 +2026,8 @@ def simple_auto_update(parent, download_url, new_version):
         progress.setValue(60)
         QApplication.processEvents()
         
-        # 2. ZIPを展開（元のツールの親ディレクトリに）
-        extract_dir = os.path.join(parent_dir, f"ProductRegisterTool-v{new_version}")
+        # 2. ZIPを展開（権限に応じたディレクトリに）
+        extract_dir = os.path.join(download_dir, f"ProductRegisterTool-v{new_version}")
         if os.path.exists(extract_dir):
             shutil.rmtree(extract_dir)
             
@@ -2151,6 +2179,185 @@ def simple_auto_update(parent, download_url, new_version):
             f"更新中にエラーが発生しました:\n{e}\n\n"
             f"手動でGitHubから最新版をダウンロードしてください。"
         )
+
+
+def _try_uac_elevation(parent_dir: str, new_version: str, download_url: str) -> bool:
+    """
+    UAC昇格を使用して管理者権限で更新を実行
+    """
+    try:
+        import platform
+        import sys
+        
+        # Windows以外では対応しない
+        if platform.system() != 'Windows':
+            logging.info("非Windows環境のため、UAC昇格をスキップ")
+            return False
+        
+        logging.info("UAC昇格を試行中...")
+        
+        # 確認ダイアログ
+        reply = QMessageBox.question(
+            None,
+            "管理者権限が必要",
+            f"更新ファイルを以下の場所に保存するには管理者権限が必要です:\n{parent_dir}\n\n"
+            f"管理者として実行しますか？\n\n"
+            f"※「いいえ」を選択すると一時フォルダに保存されます。",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.Yes
+        )
+        
+        if reply != QMessageBox.Yes:
+            logging.info("ユーザーがUAC昇格を拒否しました")
+            return False
+        
+        # 現在のスクリプトファイルパスを取得
+        if getattr(sys, 'frozen', False):
+            # PyInstallerでビルドされた場合
+            current_exe = sys.executable
+        else:
+            # 開発環境の場合
+            current_exe = sys.executable
+            script_args = [__file__] if '__file__' in globals() else []
+        
+        # UAC昇格用のコマンドライン引数を作成
+        elevation_args = [
+            current_exe,
+            '-c',
+            f'''
+import sys
+import os
+import tempfile
+import zipfile
+import shutil
+import requests
+import logging
+
+# ログ設定
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+
+try:
+    logging.info("UAC昇格プロセス開始")
+    logging.info("Download URL: {download_url}")
+    logging.info("Target dir: {parent_dir}")
+    logging.info("Version: {new_version}")
+    
+    # ダウンロード
+    response = requests.get("{download_url}", stream=True)
+    temp_zip = os.path.join("{parent_dir}", "ProductRegisterTool-v{new_version}.zip")
+    
+    with open(temp_zip, "wb") as f:
+        for chunk in response.iter_content(chunk_size=8192):
+            f.write(chunk)
+    
+    # 展開
+    extract_dir = os.path.join("{parent_dir}", "ProductRegisterTool-v{new_version}")
+    if os.path.exists(extract_dir):
+        shutil.rmtree(extract_dir)
+    
+    with zipfile.ZipFile(temp_zip, "r") as zip_ref:
+        zip_ref.extractall(extract_dir)
+    
+    logging.info("UAC昇格による更新完了")
+    print("SUCCESS: UAC昇格による更新が完了しました")
+    
+except Exception as e:
+    logging.error(f"UAC昇格エラー: {{e}}")
+    print(f"ERROR: {{e}}")
+    sys.exit(1)
+'''
+        ]
+        
+        # PowerShellを使用してUAC昇格実行
+        import subprocess
+        
+        # PowerShellコマンドを作成
+        ps_command = f'''
+Start-Process -FilePath "python" -ArgumentList @("-c", @"
+import sys
+import os
+import tempfile
+import zipfile
+import shutil
+import requests
+import logging
+
+# ログ設定
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
+try:
+    logging.info('UAC昇格プロセス開始')
+    logging.info('Download URL: {download_url}')
+    logging.info('Target dir: {parent_dir}')
+    logging.info('Version: {new_version}')
+    
+    # ダウンロード
+    response = requests.get('{download_url}', stream=True)
+    temp_zip = os.path.join(r'{parent_dir}', 'ProductRegisterTool-v{new_version}.zip')
+    
+    with open(temp_zip, 'wb') as f:
+        for chunk in response.iter_content(chunk_size=8192):
+            f.write(chunk)
+    
+    # 展開
+    extract_dir = os.path.join(r'{parent_dir}', 'ProductRegisterTool-v{new_version}')
+    if os.path.exists(extract_dir):
+        shutil.rmtree(extract_dir)
+    
+    with zipfile.ZipFile(temp_zip, 'r') as zip_ref:
+        zip_ref.extractall(extract_dir)
+    
+    logging.info('UAC昇格による更新完了')
+    print('SUCCESS: UAC昇格による更新が完了しました')
+    
+except Exception as e:
+    logging.error(f'UAC昇格エラー: {{e}}')
+    print(f'ERROR: {{e}}')
+    import sys
+    sys.exit(1)
+"@) -Verb RunAs -Wait
+'''
+        
+        # PowerShellスクリプトを一時ファイルに保存
+        ps_script_path = os.path.join(tempfile.gettempdir(), f"uac_elevation_{os.getpid()}.ps1")
+        with open(ps_script_path, 'w', encoding='utf-8') as f:
+            f.write(ps_command)
+        
+        # PowerShellを実行
+        result = subprocess.run([
+            'powershell.exe', 
+            '-ExecutionPolicy', 'Bypass',
+            '-File', ps_script_path
+        ], capture_output=True, text=True, timeout=300)
+        
+        # 一時ファイルを削除
+        try:
+            os.remove(ps_script_path)
+        except:
+            pass
+        
+        if result.returncode == 0 and "SUCCESS" in result.stdout:
+            logging.info("UAC昇格による更新が成功しました")
+            
+            # 成功メッセージ
+            QMessageBox.information(
+                None,
+                "更新完了",
+                f"管理者権限で更新が完了しました！\n\n"
+                f"新しいバージョン v{new_version} が以下に保存されました:\n"
+                f"{parent_dir}\\ProductRegisterTool-v{new_version}\\"
+            )
+            return True
+        else:
+            logging.error(f"UAC昇格が失敗しました: {result.stderr}")
+            return False
+            
+    except subprocess.TimeoutExpired:
+        logging.error("UAC昇格がタイムアウトしました")
+        return False
+    except Exception as e:
+        logging.error(f"UAC昇格エラー: {e}")
+        return False
 
 
 def check_for_updates_on_startup(parent=None):
