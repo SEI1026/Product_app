@@ -2,7 +2,7 @@
 chcp 65001 > nul
 setlocal enabledelayedexpansion
 echo ====================================
-echo 商品登録入力ツール オールインワンリリース
+echo Product Registration Tool All-in-One Release
 echo ====================================
 echo.
 
@@ -50,7 +50,7 @@ echo ====================================
 echo Starting Build and Release Process
 echo ====================================
 echo Start time: %DATE% %TIME%
-echo Company: 株式会社大宝家具
+echo Company: Taiho Furniture Co., Ltd.
 echo Version: !NEW_VERSION!
 echo.
 
@@ -183,23 +183,23 @@ copy "item_template.xlsm" "dist\package_temp\C#\ec_csv_tool\item.xlsm" >nul
 (
 echo !DISPLAY_NAME! v!NEW_VERSION!
 echo ==============================
-echo 株式会社大宝家具
+echo Taiho Furniture Co., Ltd.
 echo.
-echo ■ 使用方法:
-echo   !DISPLAY_NAME!.exe をダブルクリックして起動してください。
+echo Usage:
+echo   Double-click !DISPLAY_NAME!.exe to start.
 echo.
-echo ■ 特徴:
-echo   - オールインワンの実行ファイル
-echo   - 全データファイル内蔵^(CSVマスター、テンプレート、アイコン、C#ツール^)
-echo   - 基本動作に追加ファイルは不要
-echo   - 自動アップデート機能搭載
+echo Features:
+echo   - All-in-one executable file
+echo   - Built-in data files ^(CSV masters, templates, icons, C# tools^)
+echo   - No additional files required for basic operation
+echo   - Auto-update functionality
 echo.
-echo ■ 動作環境:
+echo System Requirements:
 echo   - Windows 10/11 64bit
-echo   - .NET Framework 4.5以降^(C#ツール用^)
-echo   - メモリ: 4GB以上推奨
+echo   - .NET Framework 4.5 or later ^(for C# tools^)
+echo   - Memory: 4GB or more recommended
 echo.
-echo Copyright ^(c^) 2025 株式会社大宝家具. All rights reserved.
+echo Copyright ^(c^) 2025 Taiho Furniture Co., Ltd. All rights reserved.
 ) > "dist\package_temp\README.txt"
 
 cd dist\package_temp
@@ -245,34 +245,34 @@ if not errorlevel 1 (
 (
 echo ## !DISPLAY_NAME! v!NEW_VERSION!
 echo.
-echo ### 🆕 新機能
-echo - リアルタイムデータ検証システム
-echo - 入力フィールドの即座エラー表示
-echo - 商品コード・価格・必須フィールドの検証
-echo - 自動保存インジケーター
+echo ### 🆕 New Features
+echo - Real-time data validation system
+echo - Instant error display for input fields
+echo - Product code, price, and required field validation
+echo - Auto-save indicator
 echo.
-echo ### ⚡ 改善点  
-echo - UI/UX大幅改善
-echo - エラーメッセージ向上
-echo - データ品質チェック強化
+echo ### ⚡ Improvements  
+echo - Major UI/UX improvements
+echo - Enhanced error messages
+echo - Strengthened data quality checks
 echo.
-echo ### 🐛 バグ修正
-echo - Python 3.13互換性修正
-echo - 文字エンコーディング問題解決
+echo ### 🐛 Bug Fixes
+echo - Python 3.13 compatibility fixes
+echo - Character encoding issues resolved
 echo.
-echo ### 💾 インストール方法
-echo 1. `!ZIP_NAME!` をダウンロード
-echo 2. 適当なフォルダに解凍  
-echo 3. `!DISPLAY_NAME!.exe` をダブルクリック
+echo ### 💾 Installation
+echo 1. Download `!ZIP_NAME!`
+echo 2. Extract to any folder  
+echo 3. Double-click `!DISPLAY_NAME!.exe`
 echo.
-echo ### 💻 動作環境
+echo ### 💻 System Requirements
 echo - Windows 10/11 64bit
-echo - .NET Framework 4.5以降
-echo - メモリ: 4GB以上推奨
+echo - .NET Framework 4.5 or later
+echo - Memory: 4GB or more recommended
 echo.
 echo ---
-echo 🏢 開発: 株式会社大宝家具
-echo 📅 リリース: %DATE%
+echo 🏢 Developer: Taiho Furniture Co., Ltd.
+echo 📅 Release: %DATE%
 ) > release_notes.md
 
 gh release create !TAG_NAME! ^
