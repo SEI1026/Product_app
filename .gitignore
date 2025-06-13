@@ -191,3 +191,7 @@ C#/*.pdb
 C#/*.vshost.*
 C#/*.application
 C#/*.manifest
+
+# Claude Code settings
+.claude/
+release_notes.md
