@@ -21,6 +21,60 @@ from urllib.error import URLError, HTTPError
 from PyQt5.QtCore import QThread, pyqtSignal, QObject, QTimer
 from PyQt5.QtWidgets import QMessageBox, QProgressDialog, QPushButton, QApplication
 
+
+def safe_extract_zip(zip_file_path: str, extract_to: str) -> str:
+    """
+    安全なZIPファイル抽出 - ディレクトリトラバーサル攻撃を防止
+    
+    Args:
+        zip_file_path: 抽出するZIPファイルのパス
+        extract_to: 抽出先ディレクトリ
+    
+    Returns:
+        str: 抽出先ディレクトリのパス
+        
+    Raises:
+        ValueError: 危険なファイルパスが検出された場合
+        Exception: その他のエラー
+    """
+    # 抽出先ディレクトリを正規化
+    extract_to = os.path.abspath(extract_to)
+    
+    with zipfile.ZipFile(zip_file_path, 'r') as zip_ref:
+        # ZIPファイルの整合性をチェック
+        bad_file = zip_ref.testzip()
+        if bad_file:
+            raise Exception(f"ZIPファイルが破損しています: {bad_file}")
+        
+        # 各ファイルのパスを検証
+        for member in zip_ref.infolist():
+            # パスを正規化
+            normalized_path = os.path.normpath(member.filename)
+            
+            # 危険なパスをチェック
+            if (normalized_path.startswith('/') or 
+                normalized_path.startswith('\\') or 
+                '..' in normalized_path or
+                ':' in normalized_path):
+                raise ValueError(f"危険なファイルパス検出: {member.filename}")
+            
+            # 抽出先の完全パスを計算
+            full_extract_path = os.path.abspath(os.path.join(extract_to, normalized_path))
+            
+            # 抽出先が指定ディレクトリ内にあることを確認
+            if not full_extract_path.startswith(extract_to):
+                raise ValueError(f"ディレクトリトラバーサル攻撃を検出: {member.filename}")
+            
+            # ファイル名の長さ制限
+            if len(normalized_path) > 255:
+                raise ValueError(f"ファイル名が長すぎます: {member.filename}")
+        
+        # 全て安全であれば抽出を実行
+        zip_ref.extractall(extract_to)
+        logging.info(f"ZIPファイルを安全に抽出: {extract_to}")
+        
+    return extract_to
+
 # 現在のアプリケーションバージョン
 CURRENT_VERSION = "2.6.3"
 
@@ -378,14 +432,9 @@ class UpdateDownloader(QThread):
         if file_size < 1000:
             raise Exception(f"ダウンロードファイルが不完全です（{file_size} bytes）")
         
-        with zipfile.ZipFile(self.temp_file, 'r') as zip_ref:
-            bad_file = zip_ref.testzip()
-            if bad_file:
-                raise Exception(f"ZIPファイルが破損: {bad_file}")
-            
-            extract_dir = tempfile.mkdtemp(prefix='update_extract_')
-            zip_ref.extractall(extract_dir)
-            return extract_dir
+        extract_dir = tempfile.mkdtemp(prefix='update_extract_')
+        safe_extract_zip(self.temp_file, extract_dir)
+        return extract_dir
     
     def _cleanup(self):
         """クリーンアップ処理"""
@@ -2031,8 +2080,7 @@ def simple_auto_update(parent, download_url, new_version):
         if os.path.exists(extract_dir):
             shutil.rmtree(extract_dir)
             
-        with zipfile.ZipFile(temp_zip, 'r') as zip_ref:
-            zip_ref.extractall(extract_dir)
+        safe_extract_zip(temp_zip, extract_dir)
         
         # 展開されたフォルダ内のメインフォルダを見つける
         logging.info(f"🔍 展開ディレクトリ内容確認: {extract_dir}")
@@ -2255,8 +2303,7 @@ try:
     if os.path.exists(extract_dir):
         shutil.rmtree(extract_dir)
     
-    with zipfile.ZipFile(temp_zip, "r") as zip_ref:
-        zip_ref.extractall(extract_dir)
+    safe_extract_zip(temp_zip, extract_dir)
     
     logging.info("UAC昇格による更新完了")
     print("SUCCESS: UAC昇格による更新が完了しました")
@@ -2304,8 +2351,7 @@ try:
     if os.path.exists(extract_dir):
         shutil.rmtree(extract_dir)
     
-    with zipfile.ZipFile(temp_zip, 'r') as zip_ref:
-        zip_ref.extractall(extract_dir)
+    safe_extract_zip(temp_zip, extract_dir)
     
     logging.info('UAC昇格による更新完了')
     print('SUCCESS: UAC昇格による更新が完了しました')

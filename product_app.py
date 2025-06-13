@@ -5931,6 +5931,13 @@ class ProductApp(QWidget):
             set_n_act = None
             set_p_act = None
         
+        # 関連商品一括コピー機能
+        copy_related_act = None
+        if item:
+            copy_related_act = menu.addAction("🔗 関連商品を他商品にコピー")
+            copy_related_act.setEnabled(bool(item))
+            menu.addSeparator()
+        
         copy_act = menu.addAction("コピーして新規作成"); del_act = menu.addAction("この商品を削除")
         copy_act.setEnabled(bool(item)); del_act.setEnabled(bool(item))
         
@@ -5940,6 +5947,8 @@ class ProductApp(QWidget):
             self._batch_set_control_column(selected_items, 'n')
         elif action == set_p_act and selected_items:
             self._batch_set_control_column(selected_items, 'p')
+        elif action == copy_related_act and item:
+            self._open_related_products_copy_dialog(item)
         elif action == copy_act and item:
             # プレフィックスを考慮して商品コードを取得
             item_txt = item.text()
@@ -7952,6 +7961,233 @@ Developed by Seito Nakamura</small></p>"""
                  # spec_def が見つからないがエディタは存在する場合（通常は発生しにくい）
                  # 安全のため、ここでは何もしないか、ログを出す程度
                  pass
+
+    def _open_related_products_copy_dialog(self, source_item):
+        """関連商品一括コピーダイアログを開く"""
+        try:
+            # 商品コードを取得
+            item_txt = source_item.text()
+            if item_txt.startswith('['):
+                source_code = item_txt.split('] ')[1].split(" - ")[0].strip()
+            else:
+                source_code = item_txt.split(" - ")[0].strip()
+            
+            # 全商品リストを取得（自分自身を除く）
+            all_products = []
+            for i in range(self.product_list.count()):
+                item = self.product_list.item(i)
+                if item and item != source_item:
+                    item_text = item.text()
+                    if item_text.startswith('['):
+                        code = item_text.split('] ')[1].split(" - ")[0].strip()
+                        name = item_text.split(" - ", 1)[1].strip() if " - " in item_text else ""
+                    else:
+                        parts = item_text.split(" - ", 1)
+                        code = parts[0].strip()
+                        name = parts[1].strip() if len(parts) > 1 else ""
+                    all_products.append((code, name))
+            
+            # ダイアログを開く
+            dialog = RelatedProductsCopyDialog(
+                self, source_code, all_products, self.manage_file_path
+            )
+            
+            if dialog.exec_() == QDialog.Accepted:
+                # リストを再読み込みして変更を反映
+                current_selection = None
+                if self.product_list.currentItem():
+                    current_selection = self.product_list.currentItem().text()
+                
+                self.load_list()
+                
+                # 選択状態を復元
+                if current_selection:
+                    for i in range(self.product_list.count()):
+                        if self.product_list.item(i).text() == current_selection:
+                            self.product_list.setCurrentRow(i)
+                            break
+        
+        except Exception as e:
+            logging.error(f"関連商品一括コピーダイアログ起動エラー: {e}")
+            QMessageBox.critical(self, "エラー", f"関連商品一括コピー機能の起動に失敗しました:\n{str(e)}")
+
+    def _load_source_related_data(self, source_code):
+        """ソース商品の関連商品データを読み込む"""
+        related_data = {}
+        
+        try:
+            from openpyxl import load_workbook
+            wb = load_workbook(self.manage_file_path, read_only=True, keep_vba=True)
+            ws = wb[MAIN_SHEET_NAME]
+            
+            # ヘッダー行を取得
+            header_row = [str(cell.value).strip() if cell.value else "" for cell in ws[1]]
+            code_idx = header_row.index(HEADER_MYCODE)
+            
+            # 関連商品フィールドのインデックスを取得
+            related_indices = {}
+            for i in range(1, 16):  # 関連商品_1a～15b
+                field_a = f"関連商品_{i}a"
+                field_b = f"関連商品_{i}b"
+                try:
+                    related_indices[field_a] = header_row.index(field_a)
+                    related_indices[field_b] = header_row.index(field_b)
+                except ValueError:
+                    # フィールドが存在しない場合はスキップ
+                    continue
+            
+            # 対象商品の行を検索
+            for row in range(2, ws.max_row + 1):
+                if str(ws.cell(row=row, column=code_idx+1).value).strip() == source_code:
+                    # 関連商品データを取得
+                    for field_name, col_idx in related_indices.items():
+                        cell_value = ws.cell(row=row, column=col_idx+1).value
+                        related_data[field_name] = str(cell_value).strip() if cell_value else ""
+                    break
+            
+            wb.close()
+            
+        except Exception as e:
+            logging.error(f"関連商品データの読み込みエラー: {e}")
+            QMessageBox.critical(self, "エラー", f"関連商品データの読み込みに失敗しました:\n{str(e)}")
+        
+        return related_data
+
+    def _execute_related_products_copy(self, source_code, target_codes, overwrite=True):
+        """関連商品の一括コピーを実行"""
+        
+        try:
+            # プログレスダイアログ表示
+            from PyQt5.QtWidgets import QProgressDialog
+            progress = QProgressDialog("関連商品をコピー中...", "キャンセル", 0, len(target_codes), self)
+            progress.setWindowModality(Qt.WindowModal)
+            progress.show()
+            
+            # ソースデータを読み込み
+            source_data = self._load_source_related_data(source_code)
+            if not source_data:
+                QMessageBox.warning(self, "警告", "コピー元商品に関連商品データがありません")
+                return False
+            
+            # Excelファイルを開く
+            from openpyxl import load_workbook
+            wb = load_workbook(self.manage_file_path, keep_vba=True)
+            ws = wb[MAIN_SHEET_NAME]
+            
+            # ヘッダー行を取得
+            header_row = [str(cell.value).strip() if cell.value else "" for cell in ws[1]]
+            code_idx = header_row.index(HEADER_MYCODE)
+            
+            # 関連商品フィールドのインデックスを取得
+            related_indices = {}
+            for i in range(1, 16):
+                field_a = f"関連商品_{i}a"
+                field_b = f"関連商品_{i}b"
+                try:
+                    related_indices[field_a] = header_row.index(field_a)
+                    related_indices[field_b] = header_row.index(field_b)
+                except ValueError:
+                    continue
+            
+            success_count = 0
+            error_list = []
+            
+            # 各ターゲット商品にコピー
+            for i, target_code in enumerate(target_codes):
+                if progress.wasCanceled():
+                    break
+                
+                progress.setValue(i)
+                progress.setLabelText(f"コピー中: {target_code}")
+                QApplication.processEvents()
+                
+                try:
+                    # ターゲット商品の行を検索
+                    target_row = None
+                    for row in range(2, ws.max_row + 1):
+                        if str(ws.cell(row=row, column=code_idx+1).value).strip() == target_code:
+                            target_row = row
+                            break
+                    
+                    if target_row is None:
+                        error_list.append(f"{target_code}: 商品が見つかりません")
+                        continue
+                    
+                    # 関連商品データをコピー
+                    copied_fields = 0
+                    for field_name, col_idx in related_indices.items():
+                        source_value = source_data.get(field_name, "")
+                        
+                        if not source_value:  # ソースが空の場合はスキップ
+                            continue
+                        
+                        # 上書きモードかチェック
+                        if not overwrite:
+                            # 既存値がある場合はスキップ
+                            existing_value = ws.cell(row=target_row, column=col_idx+1).value
+                            if existing_value and str(existing_value).strip():
+                                continue
+                        
+                        # 値をコピー
+                        ws.cell(row=target_row, column=col_idx+1).value = source_value
+                        copied_fields += 1
+                    
+                    if copied_fields > 0:
+                        success_count += 1
+                    else:
+                        error_list.append(f"{target_code}: コピー対象のデータがありません")
+                        
+                except Exception as e:
+                    error_list.append(f"{target_code}: {str(e)}")
+            
+            progress.setValue(len(target_codes))
+            
+            # ファイルを保存
+            wb.save(self.manage_file_path)
+            wb.close()
+            
+            # 結果表示
+            self._show_copy_results(success_count, error_list, len(target_codes))
+            
+            return success_count > 0
+            
+        except Exception as e:
+            logging.error(f"関連商品一括コピーエラー: {e}")
+            QMessageBox.critical(self, "エラー", f"関連商品のコピーに失敗しました:\n{str(e)}")
+            return False
+
+    def _show_copy_results(self, success_count, error_list, total_count):
+        """コピー結果を表示"""
+        from PyQt5.QtWidgets import QDialog, QVBoxLayout, QLabel, QTextEdit, QPushButton
+        
+        dialog = QDialog(self)
+        dialog.setWindowTitle("関連商品コピー結果")
+        dialog.setFixedSize(500, 400)
+        
+        layout = QVBoxLayout(dialog)
+        
+        # サマリー
+        summary = f"処理完了: {success_count}/{total_count}件 成功"
+        summary_label = QLabel(summary)
+        summary_label.setStyleSheet("font-weight: bold; font-size: 14px;")
+        layout.addWidget(summary_label)
+        
+        if error_list:
+            # エラー詳細
+            layout.addWidget(QLabel("エラー詳細:"))
+            error_text = QTextEdit()
+            error_text.setPlainText("\n".join(error_list))
+            error_text.setReadOnly(True)
+            layout.addWidget(error_text)
+        else:
+            layout.addWidget(QLabel("すべて正常にコピーされました！"))
+        
+        # 閉じるボタン
+        close_btn = QPushButton("閉じる")
+        close_btn.clicked.connect(dialog.accept)
+        layout.addWidget(close_btn)
+        
+        dialog.exec_()
         
 class ClickableIconLabel(QLabel):
     clicked = pyqtSignal(str) # Emits the icon ID when clicked
@@ -8634,6 +8870,190 @@ class ColorSelectionDialog(QDialog):
     def get_selected_common_colors(self):
         # self.selected_order には、ユーザーが操作した結果の順番で共通色名が入っている
         return list(self.selected_order) # 変更不可なコピーを返す
+
+
+class RelatedProductsCopyDialog(QDialog):
+    """関連商品一括コピーダイアログ"""
+    
+    def __init__(self, parent, source_product_code, all_products, manage_file_path):
+        super().__init__(parent)
+        self.source_product_code = source_product_code
+        self.all_products = all_products  # [(code, name), ...]
+        self.manage_file_path = manage_file_path
+        self.selected_targets = []
+        self.source_related_data = {}
+        self.parent_app = parent
+        
+        self.setup_ui()
+        self.load_source_data()
+    
+    def setup_ui(self):
+        """UIセットアップ"""
+        self.setWindowTitle("関連商品一括コピー")
+        self.setFixedSize(600, 500)
+        
+        layout = QVBoxLayout(self)
+        
+        # ソース商品表示
+        source_group = QGroupBox(f"コピー元商品: {self.source_product_code}")
+        source_layout = QVBoxLayout(source_group)
+        
+        self.source_preview = QTextEdit()
+        self.source_preview.setMaximumHeight(120)
+        self.source_preview.setReadOnly(True)
+        source_layout.addWidget(QLabel("関連商品プレビュー:"))
+        source_layout.addWidget(self.source_preview)
+        
+        layout.addWidget(source_group)
+        
+        # コピー先商品選択
+        target_group = QGroupBox("コピー先商品選択")
+        target_layout = QVBoxLayout(target_group)
+        
+        # 検索機能
+        search_layout = QHBoxLayout()
+        search_layout.addWidget(QLabel("検索:"))
+        self.search_input = QLineEdit()
+        self.search_input.setPlaceholderText("商品コードまたは商品名で検索")
+        search_layout.addWidget(self.search_input)
+        target_layout.addLayout(search_layout)
+        
+        # 商品リスト（チェックボックス付き）
+        self.product_list = QListWidget()
+        self.product_list.setSelectionMode(QAbstractItemView.MultiSelection)
+        target_layout.addWidget(self.product_list)
+        
+        # 選択ボタン
+        button_layout = QHBoxLayout()
+        self.select_all_btn = QPushButton("すべて選択")
+        self.select_none_btn = QPushButton("すべて解除")
+        self.select_visible_btn = QPushButton("表示中を選択")
+        button_layout.addWidget(self.select_all_btn)
+        button_layout.addWidget(self.select_none_btn)
+        button_layout.addWidget(self.select_visible_btn)
+        button_layout.addStretch()
+        target_layout.addLayout(button_layout)
+        
+        layout.addWidget(target_group)
+        
+        # オプション設定
+        options_group = QGroupBox("コピーオプション")
+        options_layout = QVBoxLayout(options_group)
+        
+        self.overwrite_checkbox = QCheckBox("既存の関連商品データを上書きする")
+        self.overwrite_checkbox.setChecked(True)
+        self.overwrite_checkbox.setToolTip(
+            "チェック時: 既存データを完全に置き換え\n"
+            "未チェック時: 空の項目のみにコピー"
+        )
+        options_layout.addWidget(self.overwrite_checkbox)
+        
+        layout.addWidget(options_group)
+        
+        # 実行結果プレビュー
+        preview_group = QGroupBox("処理対象")
+        preview_layout = QVBoxLayout(preview_group)
+        self.target_count_label = QLabel("選択された商品: 0件")
+        preview_layout.addWidget(self.target_count_label)
+        layout.addWidget(preview_group)
+        
+        # ボタン
+        button_box = QDialogButtonBox(
+            QDialogButtonBox.Ok | QDialogButtonBox.Cancel
+        )
+        button_box.button(QDialogButtonBox.Ok).setText("コピー実行")
+        button_box.button(QDialogButtonBox.Cancel).setText("キャンセル")
+        layout.addWidget(button_box)
+        
+        # シグナル接続
+        self.search_input.textChanged.connect(self.filter_products)
+        self.product_list.itemSelectionChanged.connect(self.update_selection_count)
+        self.select_all_btn.clicked.connect(self.select_all_visible)
+        self.select_none_btn.clicked.connect(self.select_none)
+        self.select_visible_btn.clicked.connect(self.select_all_visible)
+        button_box.accepted.connect(self.execute_copy)
+        button_box.rejected.connect(self.reject)
+        
+        # 商品リストを初期化
+        self.populate_product_list()
+    
+    def load_source_data(self):
+        """ソース商品のデータを読み込み、プレビューに表示"""
+        self.source_related_data = self.parent_app._load_source_related_data(self.source_product_code)
+        
+        # プレビューテキストを作成
+        preview_lines = []
+        for i in range(1, 16):
+            name_key = f"関連商品_{i}a"
+            code_key = f"関連商品_{i}b"
+            name = self.source_related_data.get(name_key, "")
+            code = self.source_related_data.get(code_key, "")
+            
+            if name or code:
+                preview_lines.append(f"{i:2d}. {name} ({code})")
+        
+        if preview_lines:
+            self.source_preview.setText("\n".join(preview_lines))
+        else:
+            self.source_preview.setText("関連商品データがありません")
+    
+    def populate_product_list(self):
+        """商品リストを作成"""
+        self.product_list.clear()
+        for code, name in self.all_products:
+            display_text = f"{code} - {name}" if name else code
+            self.product_list.addItem(display_text)
+    
+    def filter_products(self):
+        """検索フィルター"""
+        search_text = self.search_input.text().lower()
+        
+        for i in range(self.product_list.count()):
+            item = self.product_list.item(i)
+            if search_text in item.text().lower():
+                item.setHidden(False)
+            else:
+                item.setHidden(True)
+    
+    def select_all_visible(self):
+        """表示中の商品をすべて選択"""
+        for i in range(self.product_list.count()):
+            item = self.product_list.item(i)
+            if not item.isHidden():
+                item.setSelected(True)
+        self.update_selection_count()
+    
+    def select_none(self):
+        """すべての選択を解除"""
+        self.product_list.clearSelection()
+        self.update_selection_count()
+    
+    def update_selection_count(self):
+        """選択数を更新"""
+        selected_count = len(self.product_list.selectedItems())
+        self.target_count_label.setText(f"選択された商品: {selected_count}件")
+    
+    def execute_copy(self):
+        """コピー実行"""
+        selected_items = self.product_list.selectedItems()
+        if not selected_items:
+            QMessageBox.warning(self, "警告", "コピー先商品を選択してください")
+            return
+        
+        # 選択された商品コードを取得
+        target_codes = []
+        for item in selected_items:
+            code = item.text().split(" - ")[0].strip()
+            target_codes.append(code)
+        
+        # コピー実行
+        overwrite = self.overwrite_checkbox.isChecked()
+        success = self.parent_app._execute_related_products_copy(
+            self.source_product_code, target_codes, overwrite
+        )
+        
+        if success:
+            self.accept()
 
 
 # ProductAppクラスにショートカット関連のメソッドを追加
