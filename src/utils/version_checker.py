@@ -2306,11 +2306,9 @@ try:
     safe_extract_zip(temp_zip, extract_dir)
     
     logging.info("UAC昇格による更新完了")
-    print("SUCCESS: UAC昇格による更新が完了しました")
     
 except Exception as e:
-    logging.error(f"UAC昇格エラー: {{e}}")
-    print(f"ERROR: {{e}}")
+    logging.error(f"UAC昇格エラー: {e}")
     sys.exit(1)
 '''
         ]
@@ -2354,11 +2352,9 @@ try:
     safe_extract_zip(temp_zip, extract_dir)
     
     logging.info('UAC昇格による更新完了')
-    print('SUCCESS: UAC昇格による更新が完了しました')
     
 except Exception as e:
-    logging.error(f'UAC昇格エラー: {{e}}')
-    print(f'ERROR: {{e}}')
+    logging.error(f'UAC昇格エラー: {e}')
     import sys
     sys.exit(1)
 "@) -Verb RunAs -Wait
