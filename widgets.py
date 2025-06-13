@@ -665,3 +665,250 @@ class LoadingDialog(QDialog):
     def stop_animation(self):
         """アニメーション停止用のダミーメソッド（現時点では何もしない）"""
         pass
+
+
+class JapaneseLineEdit(QLineEdit):
+    """日本語コンテキストメニューを持つQLineEdit"""
+    
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.customContextMenuRequested.connect(self._show_japanese_context_menu)
+    
+    def _show_japanese_context_menu(self, position):
+        """日本語化されたコンテキストメニューを表示"""
+        from PyQt5.QtWidgets import QMenu, QAction
+        
+        menu = QMenu(self)
+        
+        # 元に戻す
+        undo_action = QAction("元に戻す", self)
+        undo_action.setShortcut("Ctrl+Z")
+        undo_action.setEnabled(self.isUndoAvailable())
+        undo_action.triggered.connect(self.undo)
+        menu.addAction(undo_action)
+        
+        # やり直し
+        redo_action = QAction("やり直し", self)
+        redo_action.setShortcut("Ctrl+Y")
+        redo_action.setEnabled(self.isRedoAvailable())
+        redo_action.triggered.connect(self.redo)
+        menu.addAction(redo_action)
+        
+        menu.addSeparator()
+        
+        # 切り取り
+        cut_action = QAction("切り取り", self)
+        cut_action.setShortcut("Ctrl+X")
+        cut_action.setEnabled(self.hasSelectedText())
+        cut_action.triggered.connect(self.cut)
+        menu.addAction(cut_action)
+        
+        # コピー
+        copy_action = QAction("コピー", self)
+        copy_action.setShortcut("Ctrl+C")
+        copy_action.setEnabled(self.hasSelectedText())
+        copy_action.triggered.connect(self.copy)
+        menu.addAction(copy_action)
+        
+        # 貼り付け
+        paste_action = QAction("貼り付け", self)
+        paste_action.setShortcut("Ctrl+V")
+        from PyQt5.QtWidgets import QApplication
+        clipboard = QApplication.clipboard()
+        paste_action.setEnabled(bool(clipboard.text()))
+        paste_action.triggered.connect(self.paste)
+        menu.addAction(paste_action)
+        
+        # 削除
+        delete_action = QAction("削除", self)
+        delete_action.setShortcut("Delete")
+        delete_action.setEnabled(self.hasSelectedText())
+        delete_action.triggered.connect(self._delete_selected)
+        menu.addAction(delete_action)
+        
+        menu.addSeparator()
+        
+        # すべて選択
+        select_all_action = QAction("すべて選択", self)
+        select_all_action.setShortcut("Ctrl+A")
+        select_all_action.setEnabled(bool(self.text()))
+        select_all_action.triggered.connect(self.selectAll)
+        menu.addAction(select_all_action)
+        
+        # メニュー表示
+        menu.exec_(self.mapToGlobal(position))
+    
+    def _delete_selected(self):
+        """選択されたテキストを削除"""
+        if self.hasSelectedText():
+            self.del_()
+
+
+class JapaneseTextEdit(QTextEdit):
+    """日本語コンテキストメニューを持つQTextEdit"""
+    
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.customContextMenuRequested.connect(self._show_japanese_context_menu)
+    
+    def _show_japanese_context_menu(self, position):
+        """日本語化されたコンテキストメニューを表示"""
+        from PyQt5.QtWidgets import QMenu, QAction
+        from PyQt5.QtGui import QTextCursor
+        
+        menu = QMenu(self)
+        
+        # 元に戻す
+        undo_action = QAction("元に戻す", self)
+        undo_action.setShortcut("Ctrl+Z")
+        undo_action.setEnabled(self.document().isUndoAvailable())
+        undo_action.triggered.connect(self.undo)
+        menu.addAction(undo_action)
+        
+        # やり直し
+        redo_action = QAction("やり直し", self)
+        redo_action.setShortcut("Ctrl+Y")
+        redo_action.setEnabled(self.document().isRedoAvailable())
+        redo_action.triggered.connect(self.redo)
+        menu.addAction(redo_action)
+        
+        menu.addSeparator()
+        
+        # 切り取り
+        cut_action = QAction("切り取り", self)
+        cut_action.setShortcut("Ctrl+X")
+        cursor = self.textCursor()
+        cut_action.setEnabled(cursor.hasSelection())
+        cut_action.triggered.connect(self.cut)
+        menu.addAction(cut_action)
+        
+        # コピー
+        copy_action = QAction("コピー", self)
+        copy_action.setShortcut("Ctrl+C")
+        copy_action.setEnabled(cursor.hasSelection())
+        copy_action.triggered.connect(self.copy)
+        menu.addAction(copy_action)
+        
+        # 貼り付け
+        paste_action = QAction("貼り付け", self)
+        paste_action.setShortcut("Ctrl+V")
+        from PyQt5.QtWidgets import QApplication
+        clipboard = QApplication.clipboard()
+        paste_action.setEnabled(bool(clipboard.text()))
+        paste_action.triggered.connect(self.paste)
+        menu.addAction(paste_action)
+        
+        # 削除
+        delete_action = QAction("削除", self)
+        delete_action.setShortcut("Delete")
+        delete_action.setEnabled(cursor.hasSelection())
+        delete_action.triggered.connect(self._delete_selected)
+        menu.addAction(delete_action)
+        
+        menu.addSeparator()
+        
+        # すべて選択
+        select_all_action = QAction("すべて選択", self)
+        select_all_action.setShortcut("Ctrl+A")
+        select_all_action.setEnabled(bool(self.toPlainText()))
+        select_all_action.triggered.connect(self.selectAll)
+        menu.addAction(select_all_action)
+        
+        # メニュー表示
+        menu.exec_(self.mapToGlobal(position))
+    
+    def _delete_selected(self):
+        """選択されたテキストを削除"""
+        cursor = self.textCursor()
+        if cursor.hasSelection():
+            cursor.removeSelectedText()
+
+
+class JapaneseHtmlTextEdit(CustomHtmlTextEdit):
+    """日本語コンテキストメニューを持つHTMLテキストエディット"""
+    
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.customContextMenuRequested.connect(self._show_japanese_context_menu)
+    
+    def _show_japanese_context_menu(self, position):
+        """日本語化されたコンテキストメニューを表示（HTML用の追加機能付き）"""
+        from PyQt5.QtWidgets import QMenu, QAction
+        from PyQt5.QtGui import QTextCursor
+        
+        menu = QMenu(self)
+        
+        # 元に戻す
+        undo_action = QAction("元に戻す", self)
+        undo_action.setShortcut("Ctrl+Z")
+        undo_action.setEnabled(self.document().isUndoAvailable())
+        undo_action.triggered.connect(self.undo)
+        menu.addAction(undo_action)
+        
+        # やり直し
+        redo_action = QAction("やり直し", self)
+        redo_action.setShortcut("Ctrl+Y")
+        redo_action.setEnabled(self.document().isRedoAvailable())
+        redo_action.triggered.connect(self.redo)
+        menu.addAction(redo_action)
+        
+        menu.addSeparator()
+        
+        # 切り取り
+        cut_action = QAction("切り取り", self)
+        cut_action.setShortcut("Ctrl+X")
+        cursor = self.textCursor()
+        cut_action.setEnabled(cursor.hasSelection())
+        cut_action.triggered.connect(self.cut)
+        menu.addAction(cut_action)
+        
+        # コピー
+        copy_action = QAction("コピー", self)
+        copy_action.setShortcut("Ctrl+C")
+        copy_action.setEnabled(cursor.hasSelection())
+        copy_action.triggered.connect(self.copy)
+        menu.addAction(copy_action)
+        
+        # 貼り付け
+        paste_action = QAction("貼り付け", self)
+        paste_action.setShortcut("Ctrl+V")
+        from PyQt5.QtWidgets import QApplication
+        clipboard = QApplication.clipboard()
+        paste_action.setEnabled(bool(clipboard.text()))
+        paste_action.triggered.connect(self.paste)
+        menu.addAction(paste_action)
+        
+        # 削除
+        delete_action = QAction("削除", self)
+        delete_action.setShortcut("Delete")
+        delete_action.setEnabled(cursor.hasSelection())
+        delete_action.triggered.connect(self._delete_selected)
+        menu.addAction(delete_action)
+        
+        menu.addSeparator()
+        
+        # すべて選択
+        select_all_action = QAction("すべて選択", self)
+        select_all_action.setShortcut("Ctrl+A")
+        select_all_action.setEnabled(bool(self.toPlainText()))
+        select_all_action.triggered.connect(self.selectAll)
+        menu.addAction(select_all_action)
+        
+        menu.addSeparator()
+        
+        # HTML用の特別な機能
+        insert_br_action = QAction("改行タグ挿入 (<br>)", self)
+        insert_br_action.triggered.connect(lambda: self.insertPlainText("<br>"))
+        menu.addAction(insert_br_action)
+        
+        # メニュー表示
+        menu.exec_(self.mapToGlobal(position))
+    
+    def _delete_selected(self):
+        """選択されたテキストを削除"""
+        cursor = self.textCursor()
+        if cursor.hasSelection():
+            cursor.removeSelectedText()

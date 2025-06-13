@@ -67,7 +67,54 @@ except ImportError:
     get_system_info = None
 
 # 分離したモジュールのインポート
-from constants import *
+from constants import (
+    # アプリケーション設定
+    APP_NAME,
+    
+    # ファイル名
+    TEMPLATE_FILE_NAME, CATEGORY_FILE_NAME, MANAGE_FILE_NAME, OUTPUT_FILE_NAME,
+    MATERIAL_SPEC_MASTER_FILE_NAME,
+    
+    # シート名
+    MAIN_SHEET_NAME, SKU_SHEET_NAME,
+    
+    # ヘッダー名
+    HEADER_CONTROL_COLUMN, HEADER_MYCODE, HEADER_PRODUCT_NAME, HEADER_PRICE_TAX_INCLUDED,
+    HEADER_SORT_FIELD, HEADER_SKU_CODE, HEADER_CHOICE_NAME, HEADER_MEMO, HEADER_GROUP,
+    HEADER_PRODUCT_CODE_SKU, HEADER_ATTR_ITEM_PREFIX, HEADER_ATTR_VALUE_PREFIX,
+    HEADER_ATTR_UNIT_PREFIX, HEADER_R_GENRE_ID, HEADER_Y_CATEGORY_ID, HEADER_YA_CATEGORY_ID,
+    HEADER_IMAGE_PATH_RAKUTEN, HEADER_IMAGE_DESCRIPTION, HEADER_YAHOO_ABSTRACT,
+    
+    # マスターファイル関連
+    R_GENRE_MASTER_FILE, Y_CATEGORY_MASTER_FILE, YA_CATEGORY_MASTER_FILE,
+    MASTER_ID_COLUMN_DEFAULT, MASTER_HIERARCHY_COLUMN_DEFAULT,
+    MASTER_NAME_COLUMN_R_GENRE, MASTER_NAME_COLUMN_Y_CATEGORY,
+    MASTER_NAME_COLUMN_YA_CATEGORY,
+    
+    # 楽天・Yahoo定義ファイル
+    DEFINITION_CSV_FILE, RECOMMENDED_LIST_CSV_FILE, YSPEC_CSV_FILE,
+    
+    # 特別なフィールド名
+    EXPLANATION_MARK_FIELD_NAME, EXPLANATION_MARK_ICONS_SUBDIR,
+    
+    # バリデーション・制限
+    BYTE_LIMITS, DIGIT_COUNT_MYCODE_MAX, HTML_TEXTEDIT_FIELDS,
+    
+    # SKU関連
+    MAX_SKU_ATTRIBUTES, SKU_CODE_SUFFIX_INITIAL, SKU_CODE_SUFFIX_INCREMENT,
+    SKU_CODE_SUFFIX_MAX, RAKUTEN_SKU_ATTR_NAME_SIZE_INFO,
+    
+    # UI設定
+    AUTO_SAVE_INTERVAL_MS, FROZEN_TABLE_COLUMN_COUNT, TABLE_PADDING,
+    MAX_WORKER_THREADS,
+    
+    # Yahoo spec同期名
+    YSPEC_NAME_WIDTH_CM, YSPEC_NAME_DEPTH_CM, YSPEC_NAME_HEIGHT_CM,
+    YSPEC_NAME_WEIGHT,
+    
+    # 商品色選択
+    COMMON_PRODUCT_COLORS
+)
 from utils import (
     open_csv_file_with_fallback, normalize_text, normalize_wave_dash,
     get_byte_count_excel_lenb, get_user_data_dir
@@ -75,7 +122,8 @@ from utils import (
 from models import SkuTableModel
 from widgets import (
     CustomHtmlTextEdit, FocusControllingTableView, ScrollableFocusControllingTableView,
-    MultipleSelectDialog, SkuMultipleAttributeEditor, SkuAttributeDelegate, LoadingDialog
+    MultipleSelectDialog, SkuMultipleAttributeEditor, SkuAttributeDelegate, LoadingDialog,
+    JapaneseLineEdit, JapaneseTextEdit, JapaneseHtmlTextEdit
 )
 from loaders import (
     YSpecDefinitionLoader, RakutenAttributeDefinitionLoader,
@@ -90,7 +138,9 @@ class SearchPanel(QWidget):
         self.parent_app = parent
         self.current_results = []
         self.current_index = -1
+        self._update_timer = None  # リアルタイム更新用タイマー
         self.setup_ui()
+        self.setup_field_monitoring()
         
     def setup_ui(self):
         self.setWindowTitle("検索と置換")
@@ -163,24 +213,23 @@ class SearchPanel(QWidget):
         scope_layout.addWidget(QLabel("検索対象:"))
         self.scope_combo = QComboBox()
         self.scope_combo.addItems([
-            "商品一覧のみ",
-            "現在の商品のフィールド",
-            "すべての商品・すべてのフィールド"
+            "商品一覧（全フィールド）",
+            "現在の商品のフィールド"
         ])
+        # デフォルトを「現在の商品のフィールド」に設定
+        self.scope_combo.setCurrentIndex(1)
         scope_layout.addWidget(self.scope_combo)
         layout.addLayout(scope_layout)
         
         # オプション
         options_layout = QVBoxLayout()
         self.case_sensitive = QCheckBox("大文字と小文字を区別する")
-        self.whole_word = QCheckBox("単語全体を検索")
+        self.auto_search = QCheckBox("入力中に自動検索")
+        self.auto_search.setChecked(True)  # デフォルトで有効
+        self.auto_search.setToolTip("テキスト入力中に自動的に検索を実行します\n無効にすると手動検索のみになります")
         options_layout.addWidget(self.case_sensitive)
-        options_layout.addWidget(self.whole_word)
+        options_layout.addWidget(self.auto_search)
         layout.addLayout(options_layout)
-        
-        # 結果表示
-        self.result_label = QLabel("検索結果: 0件")
-        layout.addWidget(self.result_label)
         
         # ボタンを縦配置（サイドパネル用）
         # 検索ボタン群
@@ -203,12 +252,15 @@ class SearchPanel(QWidget):
         replace_buttons_layout.addWidget(self.replace_all_btn)
         layout.addLayout(replace_buttons_layout)
         
-        # 検索結果リスト（新機能）
+        # 検索結果リスト（コンパクト表示）
+        self.result_label = QLabel("検索結果: 0件")
+        self.result_label.setMaximumHeight(20)  # ラベルの高さを制限
+        layout.addWidget(self.result_label)
+        
         self.results_list = QListWidget()
-        self.results_list.setMaximumHeight(150)
         self.results_list.setToolTip("検索結果をクリックで該当箇所にジャンプ")
-        layout.addWidget(QLabel("検索結果:"))
-        layout.addWidget(self.results_list)
+        # 検索結果リストに残りのスペースを使わせる
+        layout.addWidget(self.results_list, 1)  # stretch factor = 1
         
         # 閉じるボタン
         self.close_btn = QPushButton("✕ パネルを閉じる")
@@ -216,7 +268,7 @@ class SearchPanel(QWidget):
         
         # イベント接続
         self.search_input.textChanged.connect(self.on_search_text_changed)
-        self.search_input.returnPressed.connect(self.find_next)
+        self.search_input.returnPressed.connect(self.on_search_enter_pressed)
         self.scope_combo.currentIndexChanged.connect(self.on_scope_changed)
         self.find_next_btn.clicked.connect(self.find_next)
         self.find_prev_btn.clicked.connect(self.find_prev)
@@ -224,6 +276,7 @@ class SearchPanel(QWidget):
         self.replace_btn.clicked.connect(self.replace_current)
         self.replace_all_btn.clicked.connect(self.replace_all)
         self.close_btn.clicked.connect(self.close_panel)
+        self.results_list.itemClicked.connect(self.on_result_clicked)
         
         # 初期状態
         self.find_next_btn.setEnabled(False)
@@ -256,65 +309,193 @@ class SearchPanel(QWidget):
         self.find_prev_btn.setEnabled(has_text)
         self.find_all_btn.setEnabled(has_text)
         
-        # 置換ボタンは、検索テキストがあり、かつ現在の商品のフィールドを検索している場合のみ有効
-        can_replace = has_text and self.scope_combo.currentIndex() == 1
-        self.replace_btn.setEnabled(can_replace)
-        self.replace_all_btn.setEnabled(can_replace)
-        
-        if has_text:
-            self.perform_search()
-        else:
+        if has_text and self.auto_search.isChecked():
+            # 自動検索が有効な場合のみ自動実行
+            self.perform_search(auto_jump=False)
+        elif not has_text:
+            # テキストが空の場合は常に結果をクリア
             self.current_results = []
             self.current_index = -1
             self.result_label.setText("検索結果: 0件")
+            self.results_list.clear()
+            # 検索テキストがない場合は置換ボタンを無効化
+            self.replace_btn.setEnabled(False)
+            self.replace_all_btn.setEnabled(False)
+    
+    def on_search_enter_pressed(self):
+        """Enterキーが押されたときの処理"""
+        search_text = self.search_input.text().strip()
+        
+        # 自動検索が無効で検索テキストがある場合は手動検索を実行
+        if search_text and not self.auto_search.isChecked():
+            self.perform_search(auto_jump=True)
+        elif self.current_results:
+            if self.current_index >= 0:
+                # 既に結果を見ている場合は次へ
+                self.find_next()
+            else:
+                # まだジャンプしていない場合は最初の結果へ
+                self.current_index = 0
+                self.jump_to_result(0)
+                if self.results_list.count() > 0:
+                    self.results_list.setCurrentRow(0)
     
     def on_scope_changed(self):
         """検索対象が変更されたときの処理"""
-        # 置換ボタンの有効/無効を更新
-        has_text = bool(self.search_input.text().strip())
-        can_replace = has_text and self.scope_combo.currentIndex() == 1
-        self.replace_btn.setEnabled(can_replace)
-        self.replace_all_btn.setEnabled(can_replace)
-        
         # 検索を再実行
+        has_text = bool(self.search_input.text().strip())
         if has_text:
             self.perform_search()
+        else:
+            # 検索テキストがない場合は結果をクリア
+            self.current_results = []
+            self.current_index = -1
+            self.result_label.setText("検索結果: 0件")
+            self.results_list.clear()
+            self.replace_btn.setEnabled(False)
+            self.replace_all_btn.setEnabled(False)
     
-    def perform_search(self):
-        """検索を実行"""
+    def perform_search(self, auto_jump=True):
+        """検索を実行
+        
+        Args:
+            auto_jump (bool): 検索後に自動的に最初の結果にジャンプするかどうか
+        """
         search_text = self.search_input.text().strip()
         if not search_text:
             return
         
         scope = self.scope_combo.currentIndex()
         case_sensitive = self.case_sensitive.isChecked()
-        whole_word = self.whole_word.isChecked()
         
         self.current_results = []
         
-        if scope == 0:  # 商品一覧のみ
-            self.search_product_list(search_text, case_sensitive, whole_word)
+        if scope == 0:  # 商品一覧（全フィールド）
+            self.search_product_list(search_text, case_sensitive)
         elif scope == 1:  # 現在の商品のフィールド
-            self.search_current_product(search_text, case_sensitive, whole_word)
-        else:  # すべての商品・すべてのフィールド
-            self.search_all_products(search_text, case_sensitive, whole_word)
+            self.search_current_product(search_text, case_sensitive)
         
-        self.current_index = -1
+        # 検索結果がある場合は常に最初の結果を選択状態にする
+        if self.current_results:
+            self.current_index = 0
+        else:
+            self.current_index = -1
+            
         self.result_label.setText(f"検索結果: {len(self.current_results)}件")
+        
+        # 検索結果をリストに表示
+        self.update_results_list()
+        
+        # 置換ボタンの有効/無効を更新
+        # 現在の商品のフィールドを検索していて、結果が見つかった場合のみ置換可能
+        can_replace = (self.scope_combo.currentIndex() == 1 and 
+                      len(self.current_results) > 0 and 
+                      bool(self.search_input.text().strip()))
+        self.replace_btn.setEnabled(can_replace)
+        self.replace_all_btn.setEnabled(can_replace)
+        
+        # auto_jumpがTrueの場合のみ、最初の結果に自動でジャンプ
+        if auto_jump and self.current_results:
+            self.jump_to_result(0)
+            # リストの最初のアイテムを選択
+            if self.results_list.count() > 0:
+                self.results_list.setCurrentRow(0)
+        elif self.current_results:
+            # auto_jump=Falseでも結果がある場合はリストの最初を選択
+            if self.results_list.count() > 0:
+                self.results_list.setCurrentRow(0)
     
-    def search_product_list(self, search_text, case_sensitive, whole_word):
-        """商品一覧を検索"""
+    def search_product_list(self, search_text, case_sensitive):
+        """商品一覧を検索（各商品の詳細フィールドも含む）"""
+        if not hasattr(self.parent_app, 'manage_file_path') or not self.parent_app.manage_file_path:
+            # フォールバック: 商品一覧の表示テキストのみ検索
+            self._search_product_list_simple(search_text, case_sensitive)
+            return
+            
+        try:
+            from openpyxl import load_workbook
+            wb = load_workbook(self.parent_app.manage_file_path, read_only=True)
+            
+            if MAIN_SHEET_NAME not in wb.sheetnames:
+                self._search_product_list_simple(search_text, case_sensitive)
+                wb.close()
+                return
+                
+            ws_main = wb[MAIN_SHEET_NAME]
+            main_rows = list(ws_main.iter_rows(values_only=True))
+            
+            if not main_rows:
+                wb.close()
+                return
+                
+            headers = [str(h).strip() if h is not None else "" for h in main_rows[0]]
+            
+            # 各商品の全フィールドを検索
+            for row_idx, row in enumerate(main_rows[1:], 1):
+                row_data = dict(zip(headers, [str(cell) if cell is not None else "" for cell in row]))
+                product_code = row_data.get(HEADER_MYCODE, "")
+                
+                if not product_code:
+                    continue
+                
+                # 対応する商品一覧のアイテムを検索
+                list_item = None
+                list_index = -1
+                for i in range(self.parent_app.product_list.count()):
+                    item = self.parent_app.product_list.item(i)
+                    if item and product_code in item.text():
+                        list_item = item
+                        list_index = i
+                        break
+                
+                if not list_item:
+                    continue
+                
+                # 各フィールドで検索語が見つかるかチェック
+                matched_fields = []
+                for field_name, field_value in row_data.items():
+                    if field_value and self.text_matches(str(field_value), search_text, case_sensitive):
+                        matched_fields.append({
+                            'field_name': field_name,
+                            'field_value': str(field_value)[:100],  # 長すぎる場合は切り詰め
+                            'full_value': str(field_value)
+                        })
+                
+                # マッチしたフィールドがある場合は結果に追加
+                if matched_fields:
+                    for match in matched_fields:
+                        self.current_results.append({
+                            'type': 'product_list',
+                            'index': list_index,
+                            'item': list_item,
+                            'text': list_item.text(),
+                            'field_name': match['field_name'],
+                            'field_value': match['field_value'],
+                            'full_field_value': match['full_value'],
+                            'description': f"商品一覧 [{list_index+1}] - {match['field_name']}: {match['field_value']}"
+                        })
+            
+            wb.close()
+            
+        except Exception as e:
+            logging.error(f"商品一覧詳細検索エラー: {e}")
+            # エラー時はシンプル検索にフォールバック
+            self._search_product_list_simple(search_text, case_sensitive)
+    
+    def _search_product_list_simple(self, search_text, case_sensitive):
+        """商品一覧のシンプル検索（表示テキストのみ）"""
         for i in range(self.parent_app.product_list.count()):
             item = self.parent_app.product_list.item(i)
-            if item and self.text_matches(item.text(), search_text, case_sensitive, whole_word):
+            if item and self.text_matches(item.text(), search_text, case_sensitive):
                 self.current_results.append({
                     'type': 'product_list',
                     'index': i,
+                    'item': item,
                     'text': item.text(),
                     'description': f"商品一覧 [{i+1}]"
                 })
     
-    def search_current_product(self, search_text, case_sensitive, whole_word):
+    def search_current_product(self, search_text, case_sensitive):
         """現在の商品のフィールドを検索"""
         for field_name, field_widget in self.parent_app.main_fields.items():
             text = None
@@ -327,7 +508,7 @@ class SearchPanel(QWidget):
             else:
                 continue
                 
-            if text and self.text_matches(text, search_text, case_sensitive, whole_word):
+            if text and self.text_matches(text, search_text, case_sensitive):
                 self.current_results.append({
                     'type': 'field',
                     'field_name': field_name,
@@ -336,104 +517,177 @@ class SearchPanel(QWidget):
                     'description': f"フィールド: {field_name}"
                 })
     
-    def search_all_products(self, search_text, case_sensitive, whole_word):
-        """すべての商品・すべてのフィールドを検索"""
-        # まず商品一覧を検索
-        self.search_product_list(search_text, case_sensitive, whole_word)
-        
-        # 現在の商品のフィールドも検索
-        self.search_current_product(search_text, case_sensitive, whole_word)
-    
-    def text_matches(self, text, search_text, case_sensitive, whole_word):
+    def text_matches(self, text, search_text, case_sensitive):
         """テキストが検索条件にマッチするかチェック"""
         if not case_sensitive:
             text = text.lower()
             search_text = search_text.lower()
         
-        if whole_word:
-            import re
-            pattern = r'\b' + re.escape(search_text) + r'\b'
-            return bool(re.search(pattern, text))
-        else:
-            return search_text in text
+        return search_text in text
     
     def find_next(self):
         """次の検索結果に移動"""
         if not self.current_results:
             return
         
-        self.current_index = (self.current_index + 1) % len(self.current_results)
-        self.goto_result(self.current_index)
+        # 初回（current_indexが-1）の場合は0から開始
+        if self.current_index < 0:
+            self.current_index = 0
+        else:
+            self.current_index = (self.current_index + 1) % len(self.current_results)
+        
+        self.jump_to_result(self.current_index)
+        # リストの選択も更新
+        if self.results_list.count() > self.current_index:
+            self.results_list.setCurrentRow(self.current_index)
     
     def find_prev(self):
         """前の検索結果に移動"""
         if not self.current_results:
             return
         
-        self.current_index = (self.current_index - 1) % len(self.current_results)
-        self.goto_result(self.current_index)
+        # 初回（current_indexが-1）の場合は最後から開始
+        if self.current_index < 0:
+            self.current_index = len(self.current_results) - 1
+        else:
+            self.current_index = (self.current_index - 1) % len(self.current_results)
+        
+        self.jump_to_result(self.current_index)
+        # リストの選択も更新
+        if self.results_list.count() > self.current_index:
+            self.results_list.setCurrentRow(self.current_index)
     
     def find_all(self):
         """すべての結果を表示"""
-        if not self.current_results:
+        search_text = self.search_input.text().strip()
+        
+        # 自動検索が無効の場合は検索を実行
+        if search_text and not self.auto_search.isChecked():
+            self.perform_search(auto_jump=True)
+        elif not self.current_results:
             return
         
-        # 結果一覧ダイアログを表示
-        results_dialog = QDialog(self)
-        results_dialog.setWindowTitle("検索結果一覧")
-        results_dialog.resize(500, 400)
+        # 検索結果をリストに表示
+        self.update_results_list()
         
-        layout = QVBoxLayout(results_dialog)
-        
-        list_widget = QListWidget()
-        for i, result in enumerate(self.current_results):
-            item_text = f"{result['description']}: {result['text'][:50]}..."
-            list_item = QListWidgetItem(item_text)
-            list_item.setData(Qt.UserRole, i)
-            list_widget.addItem(list_item)
-        
-        layout.addWidget(list_widget)
-        
-        button_layout = QHBoxLayout()
-        goto_btn = QPushButton("移動")
-        close_btn = QPushButton("閉じる")
-        button_layout.addWidget(goto_btn)
-        button_layout.addStretch()
-        button_layout.addWidget(close_btn)
-        layout.addLayout(button_layout)
-        
-        def on_goto():
-            current_item = list_widget.currentItem()
-            if current_item:
-                index = current_item.data(Qt.UserRole)
-                self.goto_result(index)
-                results_dialog.close()
-        
-        goto_btn.clicked.connect(on_goto)
-        close_btn.clicked.connect(results_dialog.close)
-        list_widget.itemDoubleClicked.connect(on_goto)
-        
-        results_dialog.exec_()
+        # 最初の結果に自動でジャンプ
+        if self.current_results:
+            self.current_index = 0
+            self.jump_to_result(0)
+            # リストの最初のアイテムを選択
+            if self.results_list.count() > 0:
+                self.results_list.setCurrentRow(0)
     
-    def goto_result(self, index):
-        """指定した検索結果に移動"""
+    def update_results_list(self):
+        """検索結果リストを更新"""
+        self.results_list.clear()
+        
+        for i, result in enumerate(self.current_results):
+            # 結果の表示形式を改善
+            location = result.get('description', '不明')
+            text_preview = result.get('text', '')[:50]
+            if len(result.get('text', '')) > 50:
+                text_preview += "..."
+                
+            item_text = f"[{i+1}] {location}: {text_preview}"
+            list_item = QListWidgetItem(item_text)
+            list_item.setData(Qt.UserRole, i)  # 結果のインデックスを保存
+            list_item.setToolTip(f"フィールド: {location}\n内容: {result.get('text', '')}")
+            self.results_list.addItem(list_item)
+    
+    def on_result_clicked(self, item):
+        """検索結果がクリックされた時の処理"""
+        result_index = item.data(Qt.UserRole)
+        if result_index is not None and 0 <= result_index < len(self.current_results):
+            self.current_index = result_index
+            self.jump_to_result(result_index)
+    
+    def ensure_widget_visible(self, widget):
+        """ウィジェットが見えるようにスクロールエリアを調整"""
+        if not widget or not self.parent_app:
+            return
+            
+        # スクロールエリアを探す
+        scroll_area = None
+        parent = widget.parent()
+        while parent:
+            if isinstance(parent, QScrollArea):
+                scroll_area = parent
+                break
+            parent = parent.parent()
+        
+        if scroll_area:
+            # ウィジェットの位置を取得
+            try:
+                # ウィジェットをスクロールエリアの表示領域に収める
+                scroll_area.ensureWidgetVisible(widget, 50, 50)  # 余白を50ピクセル確保
+                
+                # 追加のスクロール調整（より確実に表示）
+                widget_rect = widget.visibleRegion().boundingRect()
+                widget_global_pos = widget.mapToGlobal(widget_rect.topLeft())
+                scroll_global_pos = scroll_area.viewport().mapToGlobal(QPoint(0, 0))
+                
+                # 相対位置を計算
+                relative_y = widget_global_pos.y() - scroll_global_pos.y()
+                
+                # ウィジェットが画面の中央付近に来るようにスクロール
+                viewport_height = scroll_area.viewport().height()
+                target_y = relative_y - (viewport_height // 2) + (widget.height() // 2)
+                
+                # スクロールバーを調整
+                v_scrollbar = scroll_area.verticalScrollBar()
+                if v_scrollbar:
+                    new_value = v_scrollbar.value() + target_y
+                    new_value = max(0, min(new_value, v_scrollbar.maximum()))
+                    v_scrollbar.setValue(new_value)
+                    
+            except Exception as e:
+                logging.warning(f"スクロール調整中にエラー: {e}")
+                # エラーが発生しても基本的なensureWidgetVisibleは実行済み
+    
+    def jump_to_result(self, index):
+        """指定されたインデックスの検索結果にジャンプ"""
         if 0 <= index < len(self.current_results):
             result = self.current_results[index]
+            result_type = result.get('type')
             
-            if result['type'] == 'product_list':
-                # 商品一覧の項目を選択
-                self.parent_app.product_list.setCurrentRow(result['index'])
-                self.parent_app.product_list.setFocus()
-            elif result['type'] == 'field':
-                # フィールドにフォーカス
-                widget = result['widget']
-                widget.setFocus()
-                if isinstance(widget, QLineEdit):
-                    widget.selectAll()
-                elif isinstance(widget, QTextEdit):
-                    widget.selectAll()
+            if result_type == 'field':
+                # フィールド検索結果の場合
+                field_name = result.get('field_name')
+                if field_name and self.parent_app and hasattr(self.parent_app, 'main_fields'):
+                    if field_name in self.parent_app.main_fields:
+                        widget = self.parent_app.main_fields[field_name]
+                        widget.setFocus()
+                        
+                        # スクロールエリアにウィジェットを表示
+                        self.ensure_widget_visible(widget)
+                        
+                        # テキストを選択（可能な場合）
+                        if hasattr(widget, 'setText') and hasattr(widget, 'selectAll'):
+                            widget.selectAll()
+                        elif hasattr(widget, 'setPlainText') and hasattr(widget, 'selectAll'):
+                            widget.selectAll()
+                        
+                        # 検索語をハイライト（可能な場合）
+                        if hasattr(widget, 'findFirst') and self.search_input.text():
+                            widget.findFirst(self.search_input.text(), False, 
+                                           self.case_sensitive.isChecked(), 
+                                           False, True)
             
+            elif result_type == 'product_list':
+                # 商品リスト検索結果の場合
+                item = result.get('item')
+                if item and self.parent_app and hasattr(self.parent_app, 'product_list'):
+                    # 商品リストのアイテムを選択
+                    self.parent_app.product_list.setCurrentItem(item)
+                    # 商品データを読み込み
+                    if hasattr(self.parent_app, 'load_product'):
+                        self.parent_app.load_product(item)
+        
+        # 結果カウントを更新
+        if 0 <= index < len(self.current_results):
             self.result_label.setText(f"検索結果: {len(self.current_results)}件 ({index+1}/{len(self.current_results)})")
+    
     
     def replace_current(self):
         """現在の検索結果を置換"""
@@ -471,16 +725,31 @@ class SearchPanel(QWidget):
             QMessageBox.warning(self, "置換", "HTMLエディタフィールドは置換できません。\n手動で編集してください。")
             return
         
-        # 置換後は再検索が必要（置換により検索結果が変わる可能性があるため）
-        self.perform_search()
-        
         # 親アプリケーションのダーティフラグを設定
         if hasattr(self.parent_app, 'mark_dirty'):
             self.parent_app.mark_dirty()
         
-        # 前回と同じ位置を維持（ユーザーが次に進みたければ「次を検索」をクリック）
-        if self.current_index < len(self.current_results):
-            self.goto_result(self.current_index)
+        # 現在の位置を記憶
+        old_index = self.current_index
+        old_field = result.get('field_name') if result else None
+        
+        # 置換後は再検索（置換により検索結果が変わる可能性があるため）
+        self.perform_search(auto_jump=False)
+        
+        # 同じフィールドがまだ結果に含まれている場合は、その位置に移動
+        new_index = old_index
+        if old_field:
+            for i, res in enumerate(self.current_results):
+                if res.get('field_name') == old_field:
+                    new_index = i
+                    break
+        
+        # 適切な位置に移動
+        if new_index < len(self.current_results):
+            self.current_index = new_index
+            self.jump_to_result(new_index)
+            if self.results_list.count() > new_index:
+                self.results_list.setCurrentRow(new_index)
     
     def replace_all(self):
         """すべての検索結果を置換"""
@@ -538,6 +807,79 @@ class SearchPanel(QWidget):
         # 再検索
         self.perform_search()
     
+    def setup_field_monitoring(self):
+        """フィールド変更の監視を設定してリアルタイム検索更新を有効化"""
+        if not self.parent_app or not hasattr(self.parent_app, 'main_fields'):
+            return
+        
+        # すべてのmain_fieldsのtextChangedシグナルに接続
+        for field_name, widget in self.parent_app.main_fields.items():
+            try:
+                if isinstance(widget, QLineEdit):
+                    widget.textChanged.connect(self.on_field_changed)
+                elif isinstance(widget, QTextEdit):
+                    widget.textChanged.connect(self.on_field_changed)
+                elif hasattr(widget, 'textChanged'):
+                    widget.textChanged.connect(self.on_field_changed)
+            except Exception as e:
+                logging.debug(f"フィールド監視設定エラー {field_name}: {e}")
+        
+        # 検索オプション変更時の監視も追加
+        try:
+            self.case_sensitive.stateChanged.connect(self.on_search_option_changed)
+            self.scope_combo.currentIndexChanged.connect(self.on_search_option_changed)
+        except Exception as e:
+            logging.debug(f"検索オプション監視設定エラー: {e}")
+    
+    def on_field_changed(self):
+        """フィールド値が変更されたときの処理"""
+        # 検索結果と検索テキストがある場合のみ更新
+        if self.current_results and self.search_input.text().strip():
+            # 頻繁な更新を避けるため少し遅延
+            if not self._update_timer:
+                self._update_timer = QTimer()
+                self._update_timer.setSingleShot(True)
+                self._update_timer.timeout.connect(self.update_search_results_realtime)
+            
+            self._update_timer.stop()
+            self._update_timer.start(300)  # 300ms遅延
+    
+    def on_search_option_changed(self):
+        """検索オプション（大文字小文字区別・検索対象）が変更されたときの処理"""
+        # 検索テキストがある場合は即座に再検索
+        search_text = self.search_input.text().strip()
+        if search_text:
+            self.perform_search(auto_jump=False)  # 現在位置を保持
+    
+    def update_search_results_realtime(self):
+        """フィールド変更後のリアルタイム検索結果更新"""
+        search_text = self.search_input.text().strip()
+        if not search_text:
+            return
+        
+        # 現在の選択を保存
+        current_selection = self.current_index
+        current_field = None
+        if 0 <= current_selection < len(self.current_results):
+            current_result = self.current_results[current_selection]
+            current_field = current_result.get('field_name')
+        
+        # 検索を再実行
+        self.perform_search(auto_jump=False)
+        
+        # 可能であれば同じフィールドの選択を維持
+        if current_field:
+            for i, result in enumerate(self.current_results):
+                if result.get('field_name') == current_field:
+                    self.current_index = i
+                    if self.results_list.count() > i:
+                        self.results_list.setCurrentRow(i)
+                    break
+            else:
+                # 前に選択していたフィールドが見つからない場合は選択をクリア
+                self.current_index = -1
+                self.results_list.clearSelection()
+    
     def _perform_replace(self, text, search_text, replace_text):
         """テキストの置換を実行"""
         # 安全性チェック
@@ -549,18 +891,11 @@ class SearchPanel(QWidget):
             replace_text = ""  # Noneは空文字列として扱う
             
         case_sensitive = self.case_sensitive.isChecked()
-        whole_word = self.whole_word.isChecked()
         
         try:
-            if whole_word:
-                import re
-                pattern = r'\b' + re.escape(search_text) + r'\b'
-                flags = 0 if case_sensitive else re.IGNORECASE
-                return re.sub(pattern, replace_text, text, flags=flags)
+            if case_sensitive:
+                return text.replace(search_text, replace_text)
             else:
-                if case_sensitive:
-                    return text.replace(search_text, replace_text)
-                else:
                     # 大文字小文字を区別しない置換
                     import re
                     pattern = re.escape(search_text)
@@ -675,7 +1010,7 @@ class ExpandableFieldGroup(QWidget):
 
                 field_widget = self.main_fields_ref.get(field_name)
                 if not field_widget: # main_fields_ref にウィジェットがなければ作成
-                    field_widget = QLineEdit()
+                    field_widget = JapaneseLineEdit()
                     field_widget.setObjectName(field_name)
                     self.main_fields_ref[field_name] = field_widget # main_fields_ref に登録
                 
@@ -704,7 +1039,7 @@ class ExpandableFieldGroup(QWidget):
                 
                 if i == 1 and current_field_name_base_for_html_check in HTML_TEXTEDIT_FIELDS:
                     field_name = current_field_name_base_for_html_check
-                    field_widget = CustomHtmlTextEdit() # カスタムクラスを使用
+                    field_widget = JapaneseHtmlTextEdit() # 日本語コンテキストメニュー付き
                     field_widget.setPlaceholderText("HTMLタグ使用可。改行＝<br>")
                     field_widget.setObjectName(field_name)
                     field_widget._efg_managed = True
@@ -1232,7 +1567,7 @@ class ProductApp(QWidget):
         except ValueError:
             logging.warning("価格フィールドまたはR_商品名フィールドが見つからず、YA_suffixの位置を特定できませんでした。")
 
-        for i in range(1, 6): fld = QLineEdit(); fld.setObjectName(f"商品カテゴリ{i}"); self.main_fields[f"商品カテゴリ{i}"] = fld; self.category_fields.append(fld)
+        for i in range(1, 6): fld = JapaneseLineEdit(); fld.setObjectName(f"商品カテゴリ{i}"); self.main_fields[f"商品カテゴリ{i}"] = fld; self.category_fields.append(fld)
         
         # 楽天SKUオプションフィールドのリスト
         self.rakuten_sku_option_fields_list = [
@@ -2302,7 +2637,7 @@ class ProductApp(QWidget):
         self.sku_delete_btn.setToolTip("選択されているSKU行を削除します (テーブルフォーカス時 Deleteキー)")
         
         # 検索バーと商品リスト
-        self.search_bar = QLineEdit()
+        self.search_bar = JapaneseLineEdit()
         self.search_bar.setPlaceholderText("商品コードまたは商品名で検索")
         
         self.product_list = QListWidget()
@@ -2430,7 +2765,7 @@ class ProductApp(QWidget):
                 logging.debug("_update_status_bar メソッドが見つかりません")
                 
         except Exception as e:
-            print(f"DEBUG: ステータスバー初期化エラー: {e}")
+            logging.debug(f"ステータスバー初期化エラー: {e}")
             import traceback
             traceback.print_exc()
     
@@ -2439,7 +2774,7 @@ class ProductApp(QWidget):
         try:
             # ステータスラベルが初期化されているかチェック
             if not hasattr(self, 'status_labels') or not self.status_labels:
-                print("WARNING: status_labels が初期化されていません")
+                logging.warning("status_labels が初期化されていません")
                 return
                 
             # 保存状態
@@ -2490,7 +2825,7 @@ class ProductApp(QWidget):
                 self.status_labels['validation'].setStyleSheet("color: #10b981;")
                 self.status_labels['validation'].setToolTip("入力内容に問題ありません")
         except Exception as e:
-            print(f"Status bar update error: {e}")
+            logging.error(f"Status bar update error: {e}")
             import traceback
             traceback.print_exc()
     
@@ -2546,7 +2881,7 @@ class ProductApp(QWidget):
                             error_details.append(f"SKU{row+1}行目: 選択肢名が未入力")
                             
         except Exception as e:
-            print(f"Error counting validation errors: {e}")
+            logging.error(f"Error counting validation errors: {e}")
         
         return error_count, error_details
     
@@ -2745,7 +3080,7 @@ class ProductApp(QWidget):
                         self._event_filters.append((editor, filter_obj))
                         
         except Exception as e:
-            print(f"Y_spec navigation setup error: {e}")
+            logging.error(f"Y_spec navigation setup error: {e}")
     
     def _setup_button_focus_policies(self):
         """ボタンのフォーカスポリシーを設定してTabキーナビゲーションから除外"""
@@ -2809,7 +3144,7 @@ class ProductApp(QWidget):
                     button.setFocusPolicy(Qt.NoFocus)
                         
         except Exception as e:
-            print(f"Button focus policy setup error: {e}")
+            logging.error(f"Button focus policy setup error: {e}")
     
     def _handle_enter_navigation(self, current_widget, current_field_name):
         """Enterキーでの次フィールドへの移動処理"""
@@ -2907,7 +3242,7 @@ class ProductApp(QWidget):
             self._move_to_sku_table()
                         
         except Exception as e:
-            print(f"Enter navigation error: {e}")
+            logging.error(f"Enter navigation error: {e}")
     
     def _ensure_field_visible(self, widget):
         """フィールドが見えるようにスクロール領域を調整"""
@@ -2970,7 +3305,7 @@ class ProductApp(QWidget):
                 scroll_attempts += 1
                 
         except Exception as e:
-            print(f"Ensure field visible error: {e}")
+            logging.error(f"Ensure field visible error: {e}")
     
     def _handle_backtab_navigation(self, current_widget, current_field_name):
         """Shift+Tabキーでの前フィールドへの移動処理"""
@@ -3027,7 +3362,7 @@ class ProductApp(QWidget):
             self._move_to_sku_table_last()
                         
         except Exception as e:
-            print(f"Backtab navigation error: {e}")
+            logging.error(f"Backtab navigation error: {e}")
     
     def _move_to_sku_table(self):
         """SKUテーブルの最初のセルに移動"""
@@ -3052,7 +3387,7 @@ class ProductApp(QWidget):
                         # 編集モードに入る
                         self.frozen_table_view.edit(first_index)
         except Exception as e:
-            print(f"Move to SKU table error: {e}")
+            logging.error(f"Move to SKU table error: {e}")
     
     def _move_to_sku_table_last(self):
         """SKUテーブルの最後のセルに移動"""
@@ -3080,7 +3415,7 @@ class ProductApp(QWidget):
                         # スクロールを同期
                         self._sync_table_scroll(last_row)
         except Exception as e:
-            print(f"Move to SKU table last error: {e}")
+            logging.error(f"Move to SKU table last error: {e}")
     
     def _setup_sku_table_navigation(self):
         """SKUテーブル用のスマートナビゲーション設定"""
@@ -3089,7 +3424,7 @@ class ProductApp(QWidget):
             pass
                 
         except Exception as e:
-            print(f"SKU table navigation setup error: {e}")
+            logging.error(f"SKU table navigation setup error: {e}")
     
     def _setup_global_tab_filter(self):
         """アプリケーションレベルでTabキーイベントを捕捉"""
@@ -3148,7 +3483,7 @@ class ProductApp(QWidget):
             QApplication.instance().installEventFilter(self.global_tab_filter)
             
         except Exception as e:
-            print(f"Global tab filter setup error: {e}")
+            logging.error(f"Global tab filter setup error: {e}")
     
     def _handle_sku_enter_navigation(self, table_view, event):
         """SKUテーブルでのEnterキー処理"""
@@ -3257,7 +3592,7 @@ class ProductApp(QWidget):
                 return
                 
         except Exception as e:
-            print(f"SKU Enter navigation error: {e}")
+            logging.error(f"SKU Enter navigation error: {e}")
             event.ignore()
     
     def _sync_table_scroll(self, target_row):
@@ -3271,7 +3606,7 @@ class ProductApp(QWidget):
                 QTimer.singleShot(50, lambda: self._ensure_row_visible(target_row))
                 
         except Exception as e:
-            print(f"Table scroll sync error: {e}")
+            logging.error(f"Table scroll sync error: {e}")
     
     def _ensure_row_visible(self, row):
         """指定した行が確実に表示されるようにする"""
@@ -3300,7 +3635,7 @@ class ProductApp(QWidget):
                     scrollable_scrollbar.setValue(scroll_value)
                     
         except Exception as e:
-            print(f"Ensure row visible error: {e}")
+            logging.error(f"Ensure row visible error: {e}")
     
     def _handle_sku_backtab_navigation(self, table_view, event):
         """SKUテーブルでのShift+Tabキー処理"""
@@ -3417,7 +3752,7 @@ class ProductApp(QWidget):
             event.accept()
                 
         except Exception as e:
-            print(f"SKU Backtab navigation error: {e}")
+            logging.error(f"SKU Backtab navigation error: {e}")
             event.ignore()
 
     def _setup_main_layout(self, main_layout_ref):
@@ -4087,13 +4422,8 @@ class ProductApp(QWidget):
             # スーパークラスの処理を最初に実行
             super().keyPressEvent(event)
             
-            # カスタムショートカット
-            if event.key() == Qt.Key_F5:
-                # F5で画面更新
-                self.update()
-                self.repaint()
-                event.accept()
-                return
+            # カスタムショートカット処理
+            # F5はC#実行に割り当て済みのため、ここでは処理しない
             
             # Ctrl+数字でクイックアクション
             if event.modifiers() == Qt.ControlModifier:
@@ -4765,7 +5095,7 @@ class ProductApp(QWidget):
                 code_idx=hdr.index(HEADER_MYCODE)
                 name_idx=hdr.index(HEADER_PRODUCT_NAME)
                 control_idx=hdr.index(HEADER_CONTROL_COLUMN) if HEADER_CONTROL_COLUMN in hdr else -1
-            except ValueError: print(f"Error: {MAIN_SHEET_NAME}に{HEADER_MYCODE} or {HEADER_PRODUCT_NAME}列無"); return
+            except ValueError: logging.error(f"Error: {MAIN_SHEET_NAME}に{HEADER_MYCODE} or {HEADER_PRODUCT_NAME}列無"); return
             for vals in rows[1:]:
                 code = str(vals[code_idx]).strip() if code_idx<len(vals) and vals[code_idx] is not None else ""
                 name = str(vals[name_idx]).strip() if name_idx<len(vals) and vals[name_idx] is not None else ""
@@ -5002,7 +5332,7 @@ class ProductApp(QWidget):
         
         self._is_loading_data = False # データロード完了
         self._sync_product_size_to_yspec() # 商品ロード後にも同期
-
+        
 
     def generate_html(self):
         mycode_fld = self.main_fields.get(HEADER_MYCODE)
@@ -5102,10 +5432,10 @@ class ProductApp(QWidget):
                     val = self._temp_y_spec_values_for_save[header_name]
                     return val
                 else:
-                    # print(f"Warning: _get_value_for_excel_cell - Y_spec header '{header_name}' NOT in _temp_y_spec_values_for_save keys. Returning empty.")
+                    logging.warning(f"_get_value_for_excel_cell - Y_spec header '{header_name}' NOT in _temp_y_spec_values_for_save keys. Returning empty.")
                     return ""
             else:
-                # print(f"Warning: _get_value_for_excel_cell - _temp_y_spec_values_for_save attribute DOES NOT EXIST. Returning empty.")
+                logging.warning(f"_get_value_for_excel_cell - _temp_y_spec_values_for_save attribute DOES NOT EXIST. Returning empty.")
                 return ""
 
         # バイト数列の処理
@@ -5346,16 +5676,19 @@ class ProductApp(QWidget):
     
     def undo(self):
         """元に戻す"""
-        if not self.undo_stack:
+        if len(self.undo_stack) < 2:  # 最低2つの状態が必要
             return
         
         try:
+            self._is_undoing = True  # Undo中フラグを設定
+            
             # 現在の状態をRedo履歴に保存
             current_state = self.get_current_state()
             self.redo_stack.append(current_state)
             
-            # Undo履歴から最新の状態を取得して復元
-            previous_state = self.undo_stack.pop()
+            # 現在の状態を破棄し、前の状態を復元
+            self.undo_stack.pop()  # 現在の状態を破棄
+            previous_state = self.undo_stack[-1]  # 前の状態を取得
             self.restore_state(previous_state)
             
             # Undo/Redoアクションの状態を更新
@@ -5363,6 +5696,8 @@ class ProductApp(QWidget):
             
         except Exception as e:
             logging.error(f"Undo実行中のエラー: {e}")
+        finally:
+            self._is_undoing = False
     
     def redo(self):
         """やり直し"""
@@ -5370,6 +5705,8 @@ class ProductApp(QWidget):
             return
         
         try:
+            self._is_undoing = True  # Redo中フラグを設定
+            
             # 現在の状態をUndo履歴に保存
             current_state = self.get_current_state()
             self.undo_stack.append(current_state)
@@ -5383,6 +5720,8 @@ class ProductApp(QWidget):
             
         except Exception as e:
             logging.error(f"Redo実行中のエラー: {e}")
+        finally:
+            self._is_undoing = False
     
     def _update_undo_redo_actions(self):
         """Undo/Redoアクションの有効/無効を更新"""
@@ -5933,9 +6272,10 @@ class ProductApp(QWidget):
         
         # 関連商品一括コピー機能
         copy_related_act = None
-        if item:
-            copy_related_act = menu.addAction("🔗 関連商品を他商品にコピー")
-            copy_related_act.setEnabled(bool(item))
+        selected_items = self.product_list.selectedItems()
+        if len(selected_items) > 1:
+            copy_related_act = menu.addAction("🔗 関連商品を一括コピー")
+            copy_related_act.setEnabled(True)
             menu.addSeparator()
         
         copy_act = menu.addAction("コピーして新規作成"); del_act = menu.addAction("この商品を削除")
@@ -5947,8 +6287,8 @@ class ProductApp(QWidget):
             self._batch_set_control_column(selected_items, 'n')
         elif action == set_p_act and selected_items:
             self._batch_set_control_column(selected_items, 'p')
-        elif action == copy_related_act and item:
-            self._open_related_products_copy_dialog(item)
+        elif action == copy_related_act and len(selected_items) > 1:
+            self._bulk_copy_related_products(selected_items)
         elif action == copy_act and item:
             # プレフィックスを考慮して商品コードを取得
             item_txt = item.text()
@@ -6208,7 +6548,33 @@ class ProductApp(QWidget):
                         self.clear_fields(apply_defaults=False)
                         if hasattr(self, '_update_status_bar'):
                             self._update_status_bar()
+                
+        except Exception as e:
+            logging.error(f"商品選択変更処理中にエラー: {e}")
         finally:
+            # 検索パネルが開いていて検索語が入力されている場合、検索結果を更新
+            # finallyブロックで確実に実行されるようにする
+            try:
+                logging.debug(f"商品選択変更: 検索パネル更新チェック開始")
+                logging.debug(f"  hasattr(self, '_search_panel'): {hasattr(self, '_search_panel')}")
+                if hasattr(self, '_search_panel'):
+                    logging.debug(f"  self._search_panel.isVisible(): {self._search_panel.isVisible()}")
+                    if self._search_panel.isVisible():
+                        search_text = self._search_panel.search_input.text().strip()
+                        logging.debug(f"  search_text: '{search_text}'")
+                        if search_text:
+                            logging.info(f"商品選択変更: 検索パネル更新を実行 current={current}, search_text='{search_text}'")
+                            # 少し遅延させて、load_product完了後に確実に実行
+                            QTimer.singleShot(50, lambda: self._search_panel.perform_search(auto_jump=False))
+                        else:
+                            logging.debug("  検索テキストが空のため更新スキップ")
+                    else:
+                        logging.debug("  検索パネルが非表示のため更新スキップ")
+                else:
+                    logging.debug("  検索パネルが存在しないため更新スキップ")
+            except Exception as search_error:
+                logging.error(f"検索パネル更新エラー: {search_error}")
+            
             self._is_handling_selection_change = False
 
     def _update_copy_action_state(self, current_item, previous_item):
@@ -6551,9 +6917,29 @@ class ProductApp(QWidget):
             was_dirty = self.is_dirty
             self.is_dirty = True
             
-            # 初回の変更時のみUndo履歴に保存（頻繁な保存を避ける）
+            # 検索パネル表示中は検索結果を自動更新
+            try:
+                if (hasattr(self, "_search_panel") and 
+                    self._search_panel.isVisible() and 
+                    self._search_panel.search_input.text().strip()):
+                    self._search_panel.perform_search(auto_jump=False)
+            except Exception as e:
+                logging.debug(f"検索パネル再計算中のエラー（継続）: {e}")
+            
+            # Undo履歴に保存（変更があった場合）
             if not was_dirty:
-                self.save_undo_state()
+                self.save_undo_state()  # 初回変更時は必ず保存
+            else:
+                # 既に変更済みの場合も、一定間隔で履歴を保存
+                import time
+                current_time = time.time()
+                if not hasattr(self, '_last_undo_save_time'):
+                    self._last_undo_save_time = 0
+                
+                # 1.5秒以上経過していれば新しい履歴を保存（より細かい粒度）
+                if current_time - self._last_undo_save_time > 1.5:
+                    self.save_undo_state()
+                    self._last_undo_save_time = current_time
                 
         except Exception as e:
             logging.error(f"mark_dirty中のエラー: {e}", exc_info=True)
@@ -7301,7 +7687,7 @@ class ProductApp(QWidget):
 
         # 自動保存中は表示しない（うるさくないように）
         
-        # print("DEBUG: Auto-saving data...") # デバッグ用
+        logging.debug("Auto-saving data...")
         settings = QSettings("株式会社大宝家具", APP_NAME)
         settings.setValue("autosave/exists", True)
 
@@ -7341,7 +7727,7 @@ class ProductApp(QWidget):
         # 自動保存完了時刻をツールチップに表示
         self._update_save_button_tooltip("自動保存")
         
-        # print("DEBUG: Auto-save complete.") # デバッグ用
+        logging.debug("Auto-save complete.")
 
     def _handle_search_action(self):
         """検索アクション処理"""
@@ -7351,7 +7737,7 @@ class ProductApp(QWidget):
             logging.error(f"検索ダイアログエラー: {e}", exc_info=True)
 
     def show_search_dialog(self):
-        """Excel風の検索ダイアログを表示"""
+        """検索パネルを表示"""
         # main_splitter の存在確認
         if not hasattr(self, 'main_splitter'):
             return
@@ -7398,28 +7784,61 @@ class ProductApp(QWidget):
                 except Exception as e:
                     logging.error(f"検索入力フォーカスエラー: {e}")
 
-    def clear_search(self):
-        """ESCキーでの検索クリア - フォーカスに応じて動作を分ける"""
-        # 1. 検索パネルが表示されている場合は、それを閉じる（最優先）
-        if hasattr(self, '_search_panel') and self._search_panel.isVisible():
-            self._search_panel.hide()
-            if hasattr(self, '_restore_splitter_sizes_without_search'):
-                self._restore_splitter_sizes_without_search()
-            return
-        
-        # 2. 検索バーにフォーカスがある場合、または検索バーに文字が入力されている場合は、検索をクリア
-        if hasattr(self, 'search_bar'):
-            if self.search_bar.hasFocus() or self.search_bar.text().strip():
-                self.search_bar.clear()
-                self.search_bar.clearFocus()
-                return
-        
-        # 3. その他の場合は何もしない（一般的なESCキーの動作）
 
     def focus_search(self):
         """検索ボックスにフォーカスを移動"""
         self.search_bar.setFocus()
         self.search_bar.selectAll()
+    
+    def show_shortcuts_help(self):
+        """ショートカット一覧をダイアログで表示"""
+        help_text = """
+<h3>🎯 商品登録ツール - ショートカット一覧</h3>
+
+<h4>📁 ファイル操作</h4>
+<table border="1" cellpadding="5" cellspacing="0">
+<tr><td><b>Ctrl+N</b></td><td>新規商品作成</td></tr>
+<tr><td><b>Ctrl+S</b></td><td>保存</td></tr>
+</table>
+
+<h4>🔍 検索・ナビゲーション</h4>
+<table border="1" cellpadding="5" cellspacing="0">
+<tr><td><b>Ctrl+F</b></td><td>検索パネル表示/非表示</td></tr>
+<tr><td><b>Ctrl+G</b></td><td>カテゴリ選択</td></tr>
+<tr><td><b>Ctrl+I</b></td><td>ID検索</td></tr>
+<tr><td><b>Enter / Tab</b></td><td>次のフィールドに移動（スマートナビゲーション）</td></tr>
+</table>
+
+<h4>📝 編集操作</h4>
+<table border="1" cellpadding="5" cellspacing="0">
+<tr><td><b>Ctrl+Z</b></td><td>元に戻す</td></tr>
+<tr><td><b>Ctrl+Y</b></td><td>やり直し</td></tr>
+<tr><td><b>Ctrl+Shift+A</b></td><td>SKU追加</td></tr>
+<tr><td><b>Delete</b></td><td>選択SKU削除（テーブルフォーカス時）</td></tr>
+</table>
+
+<h4>🛠️ ツール</h4>
+<table border="1" cellpadding="5" cellspacing="0">
+<tr><td><b>F5</b></td><td>C#実行</td></tr>
+<tr><td><b>Ctrl+H</b></td><td>画像説明HTML生成</td></tr>
+</table>
+
+<h4>❓ ヘルプ</h4>
+<table border="1" cellpadding="5" cellspacing="0">
+<tr><td><b>F1</b></td><td>このヘルプを表示</td></tr>
+</table>
+
+<h4>💾 自動保存</h4>
+<p>30秒ごとに自動保存されます。</p>
+        """
+        
+        msg_box = QMessageBox(self)
+        msg_box.setWindowTitle("ショートカット一覧")
+        msg_box.setTextFormat(Qt.RichText)
+        msg_box.setText(help_text)
+        msg_box.setStandardButtons(QMessageBox.Ok)
+        msg_box.setIcon(QMessageBox.Information)
+        msg_box.exec_()
 
     def _create_menu_bar(self):
         """メニューバーを作成してショートカットを表示"""
@@ -7527,10 +7946,6 @@ class ProductApp(QWidget):
         edit_menu.addAction(search_action)
         
         
-        clear_search_action = QAction("検索をクリア", self)
-        clear_search_action.setShortcut("Escape")
-        clear_search_action.triggered.connect(lambda: self.clear_search())
-        edit_menu.addAction(clear_search_action)
         
         edit_menu.addSeparator()
         
@@ -7790,7 +8205,7 @@ Developed by Seito Nakamura</small></p>"""
         QMessageBox.information(self, "復元完了", msg_info); logging.info(msg_info)
 
     def _clear_auto_save_data(self):
-        # print("DEBUG: Clearing auto-save data...") # デバッグ用
+        logging.debug("Clearing auto-save data...")
         settings = QSettings("株式会社大宝家具", APP_NAME)
         settings.remove("autosave/exists")
         settings.remove("autosave/control_column_is_n")
@@ -7800,7 +8215,7 @@ Developed by Seito Nakamura</small></p>"""
         settings.remove("autosave/y_category_id_for_yspec")
         for i in range(MAX_Y_SPEC_COUNT):
             settings.remove(f"autosave/yspec/Y_spec{i+1}")
-        # print("DEBUG: Auto-save data cleared.") # デバッグ用
+        logging.debug("Auto-save data cleared.")
 
     def _handle_new_product_action(self):
         """新規作成ボタンが押されたときの処理"""
@@ -7962,54 +8377,206 @@ Developed by Seito Nakamura</small></p>"""
                  # 安全のため、ここでは何もしないか、ログを出す程度
                  pass
 
-    def _open_related_products_copy_dialog(self, source_item):
-        """関連商品一括コピーダイアログを開く"""
-        try:
-            # 商品コードを取得
-            item_txt = source_item.text()
+    def _bulk_copy_related_products(self, selected_items):
+        """関連商品の一括コピーを実行"""
+        if len(selected_items) < 2:
+            QMessageBox.warning(self, "警告", "2件以上の商品を選択してください")
+            return
+            
+        # コピー元を選択
+        product_codes = []
+        for item in selected_items:
+            item_txt = item.text()
             if item_txt.startswith('['):
-                source_code = item_txt.split('] ')[1].split(" - ")[0].strip()
+                code = item_txt.split('] ')[1].split(" - ")[0].strip()
             else:
-                source_code = item_txt.split(" - ")[0].strip()
-            
-            # 全商品リストを取得（自分自身を除く）
-            all_products = []
-            for i in range(self.product_list.count()):
-                item = self.product_list.item(i)
-                if item and item != source_item:
-                    item_text = item.text()
-                    if item_text.startswith('['):
-                        code = item_text.split('] ')[1].split(" - ")[0].strip()
-                        name = item_text.split(" - ", 1)[1].strip() if " - " in item_text else ""
-                    else:
-                        parts = item_text.split(" - ", 1)
-                        code = parts[0].strip()
-                        name = parts[1].strip() if len(parts) > 1 else ""
-                    all_products.append((code, name))
-            
-            # ダイアログを開く
-            dialog = RelatedProductsCopyDialog(
-                self, source_code, all_products, self.manage_file_path
-            )
-            
-            if dialog.exec_() == QDialog.Accepted:
-                # リストを再読み込みして変更を反映
-                current_selection = None
-                if self.product_list.currentItem():
-                    current_selection = self.product_list.currentItem().text()
-                
-                self.load_list()
-                
-                # 選択状態を復元
-                if current_selection:
-                    for i in range(self.product_list.count()):
-                        if self.product_list.item(i).text() == current_selection:
-                            self.product_list.setCurrentRow(i)
-                            break
+                code = item_txt.split(" - ")[0].strip()
+            product_codes.append(code)
         
+        source_code, ok = QInputDialog.getItem(
+            self, 
+            "コピー元選択", 
+            "関連商品のコピー元となる商品を選択してください:",
+            product_codes,
+            0,
+            False
+        )
+        
+        if not ok:
+            return
+            
+        target_codes = [code for code in product_codes if code != source_code]
+        
+        # 上書きモードを確認
+        reply = QMessageBox.question(
+            self,
+            "上書き確認",
+            "既存の関連商品データを上書きしますか？",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.Yes
+        )
+        overwrite = reply == QMessageBox.Yes
+        
+        try:
+            # コピー元のデータを読み込み
+            source_data = self._load_source_related_data(source_code)
+            if not source_data:
+                QMessageBox.warning(self, "警告", f"コピー元商品 {source_code} に関連商品データがありません")
+                return
+            
+            # プログレスダイアログを表示
+            from PyQt5.QtWidgets import QProgressDialog
+            progress = QProgressDialog("関連商品をコピー中...", "キャンセル", 0, len(target_codes), self)
+            progress.setWindowModality(Qt.WindowModal)
+            progress.show()
+            
+            # Excelファイルを開く
+            from openpyxl import load_workbook
+            wb = load_workbook(self.manage_file_path, keep_vba=True)
+            ws = wb[MAIN_SHEET_NAME]
+            
+            # ヘッダー行を取得
+            header_row = [str(cell.value).strip() if cell.value else "" for cell in ws[1]]
+            code_idx = header_row.index(HEADER_MYCODE)
+            
+            # 関連商品フィールドのインデックスを取得
+            related_indices = {}
+            for i in range(1, 16):
+                field_a = f"関連商品_{i}a"
+                field_b = f"関連商品_{i}b"
+                try:
+                    if field_a in header_row:
+                        related_indices[field_a] = header_row.index(field_a)
+                    if field_b in header_row:
+                        related_indices[field_b] = header_row.index(field_b)
+                except ValueError:
+                    continue
+            
+            success_count = 0
+            error_list = []
+            
+            # 各ターゲット商品にコピー
+            for i, target_code in enumerate(target_codes):
+                if progress.wasCanceled():
+                    break
+                    
+                progress.setValue(i)
+                progress.setLabelText(f"コピー中: {target_code}")
+                QApplication.processEvents()
+                
+                try:
+                    # ターゲット商品の行を検索
+                    target_row = None
+                    for row in range(2, ws.max_row + 1):
+                        if str(ws.cell(row=row, column=code_idx+1).value).strip() == target_code:
+                            target_row = row
+                            break
+                    
+                    if target_row is None:
+                        error_list.append(f"{target_code}: 商品が見つかりません")
+                        continue
+                    
+                    # 関連商品データをコピー
+                    copied_fields = 0
+                    for field_name, col_idx in related_indices.items():
+                        source_value = source_data.get(field_name, "")
+                        
+                        if not source_value:
+                            continue
+                        
+                        # 上書きモードをチェック
+                        if not overwrite:
+                            existing_value = ws.cell(row=target_row, column=col_idx+1).value
+                            if existing_value and str(existing_value).strip():
+                                continue
+                        
+                        # 値をコピー
+                        ws.cell(row=target_row, column=col_idx+1).value = source_value
+                        copied_fields += 1
+                    
+                    if copied_fields > 0:
+                        success_count += 1
+                    else:
+                        error_list.append(f"{target_code}: コピー対象のデータがありません")
+                        
+                except Exception as e:
+                    error_list.append(f"{target_code}: {str(e)}")
+            
+            progress.setValue(len(target_codes))
+            
+            # ファイルを保存
+            wb.save(self.manage_file_path)
+            wb.close()
+            
+            # 結果を表示
+            if success_count > 0:
+                message = f"処理完了: {success_count}/{len(target_codes)}件 成功"
+                if error_list:
+                    message += f"\n\nエラー ({len(error_list)}件):\n" + "\n".join(error_list[:5])
+                    if len(error_list) > 5:
+                        message += "\n...他"
+                QMessageBox.information(self, "コピー完了", message)
+                
+                try:
+                    # リストを再読み込み
+                    current_codes = []
+                    for item in selected_items:
+                        item_txt = item.text()
+                        if item_txt.startswith('['):
+                            code = item_txt.split('] ')[1].split(" - ")[0].strip()
+                        else:
+                            code = item_txt.split(" - ")[0].strip()
+                        current_codes.append(code)
+                    
+                    # 現在表示中の商品コードを取得
+                    current_displayed_code = None
+                    if hasattr(self, 'main_fields') and HEADER_MYCODE in self.main_fields:
+                        mycode_field = self.main_fields[HEADER_MYCODE]
+                        if hasattr(mycode_field, 'text'):
+                            current_displayed_code = mycode_field.text().strip()
+                    
+                    logging.info(f"UI更新開始: current_displayed_code={current_displayed_code}, target_codes={target_codes}")
+                    
+                    self.load_list()
+                    
+                    # 選択状態を復元
+                    self.product_list.clearSelection()
+                    current_item_to_select = None
+                    for i in range(self.product_list.count()):
+                        item = self.product_list.item(i)
+                        item_txt = item.text()
+                        if item_txt.startswith('['):
+                            code = item_txt.split('] ')[1].split(" - ")[0].strip()
+                        else:
+                            code = item_txt.split(" - ")[0].strip()
+                        if code in current_codes:
+                            item.setSelected(True)
+                        # 現在表示中の商品があればそれを記録
+                        if code == current_displayed_code:
+                            current_item_to_select = item
+                    
+                    # 現在表示中の商品がコピー対象だった場合、データをリフレッシュ
+                    if current_displayed_code and current_displayed_code in target_codes:
+                        if current_item_to_select:
+                            logging.info(f"UI更新実行: {current_displayed_code}")
+                            # 商品を再選択してフィールドを更新
+                            self.product_list.setCurrentItem(current_item_to_select)
+                            self.load_product(current_item_to_select)
+                            logging.info("UI更新完了")
+                        else:
+                            logging.warning(f"current_item_to_select が見つかりません: {current_displayed_code}")
+                    
+                except Exception as ui_error:
+                    logging.warning(f"UI更新中にエラーが発生しましたが、コピーは成功しています: {ui_error}")
+                    import traceback
+                    logging.warning(f"UI更新エラーの詳細: {traceback.format_exc()}")
+                    # UI更新エラーは警告ログのみで、成功メッセージは既に表示済み
+            else:
+                QMessageBox.warning(self, "エラー", "コピーできませんでした")
+                
         except Exception as e:
-            logging.error(f"関連商品一括コピーダイアログ起動エラー: {e}")
-            QMessageBox.critical(self, "エラー", f"関連商品一括コピー機能の起動に失敗しました:\n{str(e)}")
+            logging.error(f"関連商品一括コピーエラー: {e}")
+            QMessageBox.critical(self, "エラー", f"関連商品のコピーに失敗しました:\n{str(e)}")
 
     def _load_source_related_data(self, source_code):
         """ソース商品の関連商品データを読み込む"""
@@ -8053,142 +8620,7 @@ Developed by Seito Nakamura</small></p>"""
         
         return related_data
 
-    def _execute_related_products_copy(self, source_code, target_codes, overwrite=True):
-        """関連商品の一括コピーを実行"""
-        
-        try:
-            # プログレスダイアログ表示
-            from PyQt5.QtWidgets import QProgressDialog
-            progress = QProgressDialog("関連商品をコピー中...", "キャンセル", 0, len(target_codes), self)
-            progress.setWindowModality(Qt.WindowModal)
-            progress.show()
-            
-            # ソースデータを読み込み
-            source_data = self._load_source_related_data(source_code)
-            if not source_data:
-                QMessageBox.warning(self, "警告", "コピー元商品に関連商品データがありません")
-                return False
-            
-            # Excelファイルを開く
-            from openpyxl import load_workbook
-            wb = load_workbook(self.manage_file_path, keep_vba=True)
-            ws = wb[MAIN_SHEET_NAME]
-            
-            # ヘッダー行を取得
-            header_row = [str(cell.value).strip() if cell.value else "" for cell in ws[1]]
-            code_idx = header_row.index(HEADER_MYCODE)
-            
-            # 関連商品フィールドのインデックスを取得
-            related_indices = {}
-            for i in range(1, 16):
-                field_a = f"関連商品_{i}a"
-                field_b = f"関連商品_{i}b"
-                try:
-                    related_indices[field_a] = header_row.index(field_a)
-                    related_indices[field_b] = header_row.index(field_b)
-                except ValueError:
-                    continue
-            
-            success_count = 0
-            error_list = []
-            
-            # 各ターゲット商品にコピー
-            for i, target_code in enumerate(target_codes):
-                if progress.wasCanceled():
-                    break
-                
-                progress.setValue(i)
-                progress.setLabelText(f"コピー中: {target_code}")
-                QApplication.processEvents()
-                
-                try:
-                    # ターゲット商品の行を検索
-                    target_row = None
-                    for row in range(2, ws.max_row + 1):
-                        if str(ws.cell(row=row, column=code_idx+1).value).strip() == target_code:
-                            target_row = row
-                            break
-                    
-                    if target_row is None:
-                        error_list.append(f"{target_code}: 商品が見つかりません")
-                        continue
-                    
-                    # 関連商品データをコピー
-                    copied_fields = 0
-                    for field_name, col_idx in related_indices.items():
-                        source_value = source_data.get(field_name, "")
-                        
-                        if not source_value:  # ソースが空の場合はスキップ
-                            continue
-                        
-                        # 上書きモードかチェック
-                        if not overwrite:
-                            # 既存値がある場合はスキップ
-                            existing_value = ws.cell(row=target_row, column=col_idx+1).value
-                            if existing_value and str(existing_value).strip():
-                                continue
-                        
-                        # 値をコピー
-                        ws.cell(row=target_row, column=col_idx+1).value = source_value
-                        copied_fields += 1
-                    
-                    if copied_fields > 0:
-                        success_count += 1
-                    else:
-                        error_list.append(f"{target_code}: コピー対象のデータがありません")
-                        
-                except Exception as e:
-                    error_list.append(f"{target_code}: {str(e)}")
-            
-            progress.setValue(len(target_codes))
-            
-            # ファイルを保存
-            wb.save(self.manage_file_path)
-            wb.close()
-            
-            # 結果表示
-            self._show_copy_results(success_count, error_list, len(target_codes))
-            
-            return success_count > 0
-            
-        except Exception as e:
-            logging.error(f"関連商品一括コピーエラー: {e}")
-            QMessageBox.critical(self, "エラー", f"関連商品のコピーに失敗しました:\n{str(e)}")
-            return False
 
-    def _show_copy_results(self, success_count, error_list, total_count):
-        """コピー結果を表示"""
-        from PyQt5.QtWidgets import QDialog, QVBoxLayout, QLabel, QTextEdit, QPushButton
-        
-        dialog = QDialog(self)
-        dialog.setWindowTitle("関連商品コピー結果")
-        dialog.setFixedSize(500, 400)
-        
-        layout = QVBoxLayout(dialog)
-        
-        # サマリー
-        summary = f"処理完了: {success_count}/{total_count}件 成功"
-        summary_label = QLabel(summary)
-        summary_label.setStyleSheet("font-weight: bold; font-size: 14px;")
-        layout.addWidget(summary_label)
-        
-        if error_list:
-            # エラー詳細
-            layout.addWidget(QLabel("エラー詳細:"))
-            error_text = QTextEdit()
-            error_text.setPlainText("\n".join(error_list))
-            error_text.setReadOnly(True)
-            layout.addWidget(error_text)
-        else:
-            layout.addWidget(QLabel("すべて正常にコピーされました！"))
-        
-        # 閉じるボタン
-        close_btn = QPushButton("閉じる")
-        close_btn.clicked.connect(dialog.accept)
-        layout.addWidget(close_btn)
-        
-        dialog.exec_()
-        
 class ClickableIconLabel(QLabel):
     clicked = pyqtSignal(str) # Emits the icon ID when clicked
 
@@ -8378,7 +8810,7 @@ class CategorySelectDialog(QDialog):
             # QListWidgetのitemSelectionChangedを手動でトリガー (もし必要なら)
             self.on_item_selection_changed()
         else:
-            print(f"情報: 初期選択パス '{full_path_to_select}' はツリーに見つかりません。")
+            logging.info(f"情報: 初期選択パス '{full_path_to_select}' はツリーに見つかりません。")
 
 
 class CustomProductCodeInputDialog(QDialog):
@@ -8870,313 +9302,12 @@ class ColorSelectionDialog(QDialog):
     def get_selected_common_colors(self):
         # self.selected_order には、ユーザーが操作した結果の順番で共通色名が入っている
         return list(self.selected_order) # 変更不可なコピーを返す
-
-
-class RelatedProductsCopyDialog(QDialog):
-    """関連商品一括コピーダイアログ"""
     
-    def __init__(self, parent, source_product_code, all_products, manage_file_path):
-        super().__init__(parent)
-        self.source_product_code = source_product_code
-        self.all_products = all_products  # [(code, name), ...]
-        self.manage_file_path = manage_file_path
-        self.selected_targets = []
-        self.source_related_data = {}
-        self.parent_app = parent
-        
-        self.setup_ui()
-        self.load_source_data()
-    
-    def setup_ui(self):
-        """UIセットアップ"""
-        self.setWindowTitle("関連商品一括コピー")
-        self.setFixedSize(600, 500)
-        
-        layout = QVBoxLayout(self)
-        
-        # ソース商品表示
-        source_group = QGroupBox(f"コピー元商品: {self.source_product_code}")
-        source_layout = QVBoxLayout(source_group)
-        
-        self.source_preview = QTextEdit()
-        self.source_preview.setMaximumHeight(120)
-        self.source_preview.setReadOnly(True)
-        source_layout.addWidget(QLabel("関連商品プレビュー:"))
-        source_layout.addWidget(self.source_preview)
-        
-        layout.addWidget(source_group)
-        
-        # コピー先商品選択
-        target_group = QGroupBox("コピー先商品選択")
-        target_layout = QVBoxLayout(target_group)
-        
-        # 検索機能
-        search_layout = QHBoxLayout()
-        search_layout.addWidget(QLabel("検索:"))
-        self.search_input = QLineEdit()
-        self.search_input.setPlaceholderText("商品コードまたは商品名で検索")
-        search_layout.addWidget(self.search_input)
-        target_layout.addLayout(search_layout)
-        
-        # 商品リスト（チェックボックス付き）
-        self.product_list = QListWidget()
-        self.product_list.setSelectionMode(QAbstractItemView.MultiSelection)
-        target_layout.addWidget(self.product_list)
-        
-        # 選択ボタン
-        button_layout = QHBoxLayout()
-        self.select_all_btn = QPushButton("すべて選択")
-        self.select_none_btn = QPushButton("すべて解除")
-        self.select_visible_btn = QPushButton("表示中を選択")
-        button_layout.addWidget(self.select_all_btn)
-        button_layout.addWidget(self.select_none_btn)
-        button_layout.addWidget(self.select_visible_btn)
-        button_layout.addStretch()
-        target_layout.addLayout(button_layout)
-        
-        layout.addWidget(target_group)
-        
-        # オプション設定
-        options_group = QGroupBox("コピーオプション")
-        options_layout = QVBoxLayout(options_group)
-        
-        self.overwrite_checkbox = QCheckBox("既存の関連商品データを上書きする")
-        self.overwrite_checkbox.setChecked(True)
-        self.overwrite_checkbox.setToolTip(
-            "チェック時: 既存データを完全に置き換え\n"
-            "未チェック時: 空の項目のみにコピー"
-        )
-        options_layout.addWidget(self.overwrite_checkbox)
-        
-        layout.addWidget(options_group)
-        
-        # 実行結果プレビュー
-        preview_group = QGroupBox("処理対象")
-        preview_layout = QVBoxLayout(preview_group)
-        self.target_count_label = QLabel("選択された商品: 0件")
-        preview_layout.addWidget(self.target_count_label)
-        layout.addWidget(preview_group)
-        
-        # ボタン
-        button_box = QDialogButtonBox(
-            QDialogButtonBox.Ok | QDialogButtonBox.Cancel
-        )
-        button_box.button(QDialogButtonBox.Ok).setText("コピー実行")
-        button_box.button(QDialogButtonBox.Cancel).setText("キャンセル")
-        layout.addWidget(button_box)
-        
-        # シグナル接続
-        self.search_input.textChanged.connect(self.filter_products)
-        self.product_list.itemSelectionChanged.connect(self.update_selection_count)
-        self.select_all_btn.clicked.connect(self.select_all_visible)
-        self.select_none_btn.clicked.connect(self.select_none)
-        self.select_visible_btn.clicked.connect(self.select_all_visible)
-        button_box.accepted.connect(self.execute_copy)
-        button_box.rejected.connect(self.reject)
-        
-        # 商品リストを初期化
-        self.populate_product_list()
-    
-    def load_source_data(self):
-        """ソース商品のデータを読み込み、プレビューに表示"""
-        self.source_related_data = self.parent_app._load_source_related_data(self.source_product_code)
-        
-        # プレビューテキストを作成
-        preview_lines = []
-        for i in range(1, 16):
-            name_key = f"関連商品_{i}a"
-            code_key = f"関連商品_{i}b"
-            name = self.source_related_data.get(name_key, "")
-            code = self.source_related_data.get(code_key, "")
-            
-            if name or code:
-                preview_lines.append(f"{i:2d}. {name} ({code})")
-        
-        if preview_lines:
-            self.source_preview.setText("\n".join(preview_lines))
-        else:
-            self.source_preview.setText("関連商品データがありません")
-    
-    def populate_product_list(self):
-        """商品リストを作成"""
-        self.product_list.clear()
-        for code, name in self.all_products:
-            display_text = f"{code} - {name}" if name else code
-            self.product_list.addItem(display_text)
-    
-    def filter_products(self):
-        """検索フィルター"""
-        search_text = self.search_input.text().lower()
-        
-        for i in range(self.product_list.count()):
-            item = self.product_list.item(i)
-            if search_text in item.text().lower():
-                item.setHidden(False)
-            else:
-                item.setHidden(True)
-    
-    def select_all_visible(self):
-        """表示中の商品をすべて選択"""
-        for i in range(self.product_list.count()):
-            item = self.product_list.item(i)
-            if not item.isHidden():
-                item.setSelected(True)
-        self.update_selection_count()
-    
-    def select_none(self):
-        """すべての選択を解除"""
-        self.product_list.clearSelection()
-        self.update_selection_count()
-    
-    def update_selection_count(self):
-        """選択数を更新"""
-        selected_count = len(self.product_list.selectedItems())
-        self.target_count_label.setText(f"選択された商品: {selected_count}件")
-    
-    def execute_copy(self):
-        """コピー実行"""
-        selected_items = self.product_list.selectedItems()
-        if not selected_items:
-            QMessageBox.warning(self, "警告", "コピー先商品を選択してください")
-            return
-        
-        # 選択された商品コードを取得
-        target_codes = []
-        for item in selected_items:
-            code = item.text().split(" - ")[0].strip()
-            target_codes.append(code)
-        
-        # コピー実行
-        overwrite = self.overwrite_checkbox.isChecked()
-        success = self.parent_app._execute_related_products_copy(
-            self.source_product_code, target_codes, overwrite
-        )
-        
-        if success:
-            self.accept()
 
 
-# ProductAppクラスにショートカット関連のメソッドを追加
-def add_shortcut_methods_to_product_app():
-    """ProductAppクラスにショートカット関連のメソッドを動的追加"""
-    
-    def show_shortcuts_help(self):
-        """ショートカット一覧をダイアログで表示"""
-        help_text = """
-<h3>🎯 商品登録ツール - ショートカット一覧</h3>
-
-<h4>📁 ファイル操作</h4>
-<table border="1" cellpadding="5" cellspacing="0">
-<tr><td><b>Ctrl+N</b></td><td>新規商品作成</td></tr>
-<tr><td><b>Ctrl+S</b></td><td>保存</td></tr>
-</table>
-
-<h4>🔍 検索・ナビゲーション</h4>
-<table border="1" cellpadding="5" cellspacing="0">
-<tr><td><b>Ctrl+F</b></td><td>検索ボックスにフォーカス</td></tr>
-<tr><td><b>Esc</b></td><td>検索をクリア</td></tr>
-<tr><td><b>Ctrl+G</b></td><td>カテゴリ選択</td></tr>
-<tr><td><b>Ctrl+I</b></td><td>ID検索</td></tr>
-<tr><td><b>Enter</b></td><td>次のフィールドに移動（スマートナビゲーション）</td></tr>
-<tr><td><b>Tab</b></td><td>論理的な順序でフィールド移動</td></tr>
-</table>
-
-<h4>📝 編集操作</h4>
-<table border="1" cellpadding="5" cellspacing="0">
-<tr><td><b>Ctrl+Z</b></td><td>元に戻す</td></tr>
-<tr><td><b>Ctrl+Y</b></td><td>やり直し</td></tr>
-<tr><td><b>Ctrl+Shift+A</b></td><td>SKU追加</td></tr>
-<tr><td><b>Delete</b></td><td>選択SKU削除（テーブルフォーカス時）</td></tr>
-</table>
-
-<h4>🛠️ ツール</h4>
-<table border="1" cellpadding="5" cellspacing="0">
-<tr><td><b>F5</b></td><td>C#実行</td></tr>
-<tr><td><b>Ctrl+H</b></td><td>画像説明HTML生成</td></tr>
-</table>
-
-<h4>❓ ヘルプ</h4>
-<table border="1" cellpadding="5" cellspacing="0">
-<tr><td><b>F1</b></td><td>このヘルプを表示</td></tr>
-</table>
-
-<h4>💾 自動保存</h4>
-<p>30秒ごとに自動保存されます。</p>
-        """
-        
-        msg_box = QMessageBox(self)
-        msg_box.setWindowTitle("ショートカット一覧")
-        msg_box.setTextFormat(Qt.RichText)
-        msg_box.setText(help_text)
-        msg_box.setStandardButtons(QMessageBox.Ok)
-        msg_box.setIcon(QMessageBox.Information)
-        msg_box.exec_()
-
-    def clear_search(self):
-        """検索ボックスをクリア"""
-        self.search_bar.clear()
-        self.search_bar.clearFocus()
 
 
-    def focus_search(self):
-        """検索ボックスにフォーカスを移動"""
-        self.search_bar.setFocus()
-        self.search_bar.selectAll()
-    
-    def _handle_search_action(self):
-        """検索アクション処理（デバッグ用ラッパー）"""
-        print("DEBUG: _handle_search_action called!")
-        logging.info("検索アクション呼び出し")
-        try:
-            self.show_search_dialog()
-        except Exception as e:
-            print(f"DEBUG: Error in show_search_dialog: {e}")
-            logging.error(f"検索ダイアログエラー: {e}", exc_info=True)
 
-    def show_search_dialog(self):
-        """Excel風の検索ダイアログを表示"""
-        print("DEBUG: show_search_dialog called!")  # デバッグ用
-        logging.info("検索ダイアログ呼び出し")  # デバッグ用
-        # 非モーダル検索パネルの切り替え
-        if not hasattr(self, '_search_panel'):
-            self._search_panel = SearchPanel(self)
-            self._search_panel.hide()  # 初期は非表示
-            
-            # スプリッターにパネルを安全に追加
-            if hasattr(self, 'main_splitter'):
-                # 現在のウィジェット数をチェック
-                current_count = self.main_splitter.count()
-                if current_count < 3:  # まだ3つ未満なら追加
-                    self.main_splitter.addWidget(self._search_panel)
-                    # 初期サイズを設定（検索パネルは最小幅）
-                    if current_count >= 1:
-                        sizes = self.main_splitter.sizes()
-                        total = sum(sizes)
-                        # 既存の領域から検索パネル分を確保
-                        panel_width = 350
-                        main_width = max(total - panel_width, total // 2)
-                        new_sizes = sizes[:-1] + [main_width, panel_width]
-                        self.main_splitter.setSizes(new_sizes)
-                else:
-                    logging.warning("検索パネル: スプリッターに3つ以上のウィジェットがあるため、追加をスキップしました")
-        
-        # パネルの表示/非表示を切り替え
-        if hasattr(self, '_search_panel'):
-            if self._search_panel.isVisible():
-                self._search_panel.hide()
-                # 検索パネルを隠すときはスプリッターサイズを調整
-                self._restore_splitter_sizes_without_search()
-            else:
-                self._search_panel.show()
-                # 検索パネルを表示するときにサイズ調整
-                self._adjust_splitter_sizes_with_search()
-                self._search_panel.search_input.setFocus()  # 検索入力にフォーカス
-
-
-    # メソッドをProductAppクラスに追加
-    ProductApp.show_shortcuts_help = show_shortcuts_help
-    ProductApp.clear_search = clear_search  
-    ProductApp.focus_search = focus_search
 
 
 if __name__ == "__main__":
@@ -9194,11 +9325,11 @@ if __name__ == "__main__":
         # Qt.AA_EnableHighDpiScaling は Qt 5.6 以降でデフォルト有効の場合もあるが、明示的に設定
         if hasattr(Qt, 'AA_EnableHighDpiScaling'):
             QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
-            print("Debug: Qt.AA_EnableHighDpiScaling set to True")
+            logging.debug("Debug: Qt.AA_EnableHighDpiScaling set to True")
         # Qt.AA_UseHighDpiPixmaps は高解像度のアイコンや画像を使用する場合に有効
         if hasattr(Qt, 'AA_UseHighDpiPixmaps'):
             QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps, True)
-            print("Debug: Qt.AA_UseHighDpiPixmaps set to True")
+            logging.debug("Debug: Qt.AA_UseHighDpiPixmaps set to True")
         try:
             import PyQt5
             pyqt_path = os.path.dirname(PyQt5.__file__)
@@ -9208,8 +9339,6 @@ if __name__ == "__main__":
             # PyQt5インポート問題は無視（必須ではない）
             pass
         app = QApplication(sys.argv)
-        # ショートカット関連のメソッドを追加
-        add_shortcut_methods_to_product_app()
         
         # QSettingsで復元するので、ここでのshowMaximized()は不要になる場合がある
         # _load_settings内で初回起動時や設定がない場合のデフォルト表示を制御
@@ -9219,8 +9348,11 @@ if __name__ == "__main__":
         # ログファイルへの出力 (loggingが初期化されていれば)
         if logging.getLogger().hasHandlers(): # ロガーが設定されていれば
             logging.critical("アプリケーションの起動中に致命的なエラーが発生しました。", exc_info=True)
-        else: # ロガーが未設定の場合 (ProductApp.__init__ より前など) はコンソールに出力
-            print(f"##### アプリケーションの起動中に致命的なエラー (ロガー未設定) #####\nエラータイプ: {type(e_global).__name__}\nエラーメッセージ: {e_global}\n##### トレースバックここから #####"); traceback.print_exc(); print("##### トレースバックここまで #####")
+        else: # ロガーが未設定の場合 (ProductApp.__init__ より前など) はstderrに出力
+            sys.stderr.write(f"アプリケーションの起動中に致命的なエラー (ロガー未設定)\n")
+            sys.stderr.write(f"エラータイプ: {type(e_global).__name__}\n")
+            sys.stderr.write(f"エラーメッセージ: {e_global}\n")
+            traceback.print_exc(file=sys.stderr)
         
         try:
             _app_temp = QApplication.instance() or QApplication(sys.argv)
@@ -9235,7 +9367,9 @@ if __name__ == "__main__":
                 log_file_path_for_msg = os.path.join(actual_user_data_dir, f"{APP_NAME}_errors.log")
             except Exception as e_log_path_fetch:
                 # パス特定に失敗した場合でも、エラーダイアログは表示する
-                print(f"情報: エラーダイアログ表示のためのログファイルパス特定に失敗: {e_log_path_fetch}")
+                # ログファイルパス特定失敗は致命的ではないので無視
+                pass
             error_box.setText(f"アプリケーションの起動中に予期せぬエラーが発生しました:\n\n{e_global}\n\n詳細は {log_file_path_for_msg} を確認してください。"); error_box.setDetailedText(traceback.format_exc()); error_box.exec_()
-        except Exception as e_msgbox: print(f"エラーダイアログの表示に失敗しました: {e_msgbox}")
+        except Exception as e_msgbox: 
+            sys.stderr.write(f"エラーダイアログの表示に失敗しました: {e_msgbox}\n")
         sys.exit(1)

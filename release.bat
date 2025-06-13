@@ -7,9 +7,9 @@ echo ====================================
 echo.
 
 :: 現在のバージョンを検出
-for /f "tokens=*" %%i in ('findstr /R "CURRENT_VERSION.*=" src\utils\version_checker.py') do set VERSION_LINE=%%i
-echo Detected version line: !VERSION_LINE!
-for /f "tokens=2 delims==" %%i in ("!VERSION_LINE!") do set CURRENT_VERSION=%%i
+for /f "tokens=2 delims== " %%i in (
+    'findstr /R /C:"^CURRENT_VERSION *= *\"" src\utils\version_checker.py'
+) do set CURRENT_VERSION=%%i
 set CURRENT_VERSION=!CURRENT_VERSION:"=!
 set CURRENT_VERSION=!CURRENT_VERSION: =!
 echo Extracted current version: !CURRENT_VERSION!
@@ -289,17 +289,25 @@ if errorlevel 1 (
 
 echo GitHub release created successfully!
 
-echo [10/10] Committing version updates...
+echo [10/10] Committing all updates...
 git status >nul 2>&1
 if not errorlevel 1 (
     echo Checking Git repository status...
-    git status --porcelain version.json src\utils\version_checker.py >nul 2>&1
     
-    echo Adding version files to Git...
+    echo Current status:
+    git status --short
+    
+    echo Adding all tracked files and version updates to Git...
+    git add .
     git add version.json src\utils\version_checker.py
     
-    echo Committing version updates...
-    git commit -m "chore: update version to v!NEW_VERSION! with auto-update support"
+    echo Committing all changes including version updates...
+    git commit -m "release: update to v!NEW_VERSION! with latest improvements
+
+- Version bump to !NEW_VERSION!
+- Auto-update configuration updated
+- Latest code improvements included
+- Build and release assets updated"
     
     echo Pushing to GitHub...
     git push origin main
@@ -307,14 +315,16 @@ if not errorlevel 1 (
         echo WARNING: Failed to push changes to GitHub
         echo Please manually run: git push origin main
     ) else (
-        echo ✅ Version updates pushed to GitHub successfully!
+        echo ✅ All updates pushed to GitHub successfully!
         echo Auto-update URL should now be accessible
+        echo Latest code improvements are now in the repository
     )
 ) else (
-    echo Git not available - please manually commit version updates:
-    echo 1. git add version.json src\utils\version_checker.py  
-    echo 2. git commit -m "chore: update version to v!NEW_VERSION!"
-    echo 3. git push origin main
+    echo Git not available - please manually commit all updates:
+    echo 1. git add .
+    echo 2. git add version.json src\utils\version_checker.py  
+    echo 3. git commit -m "release: update to v!NEW_VERSION! with latest improvements"
+    echo 4. git push origin main
 )
 
 echo.
