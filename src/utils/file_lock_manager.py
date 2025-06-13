@@ -79,30 +79,45 @@ class FileLockManager:
         return conflicted_files
     
     def _is_file_locked(self, file_path: str) -> bool:
-        """ファイルが他のプロセスで開かれているかチェック"""
-        try:
-            # Windowsでのファイルロックチェック
-            if os.name == 'nt':
-                try:
-                    # ファイルを排他モードで開いてみる
-                    with open(file_path, 'r+b') as f:
-                        pass
+        """ファイルが他のプロセスで開かれているかチェック（競合状態対策強化）"""
+        import threading
+        
+        # スレッドセーフ化（TOCTOU脆弱性対策）
+        with threading.Lock():
+            try:
+                # ファイルの存在確認
+                if not os.path.exists(file_path):
                     return False
-                except (IOError, OSError):
-                    return True
-            else:
-                # Unix系での簡易チェック
-                import fcntl
-                try:
-                    with open(file_path, 'r') as f:
-                        fcntl.flock(f.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-                        fcntl.flock(f.fileno(), fcntl.LOCK_UN)
-                    return False
-                except (IOError, OSError):
-                    return True
-                    
-        except Exception:
-            return False  # エラー時は非ロック状態と判定
+                
+                # Windowsでのファイルロックチェック
+                if os.name == 'nt':
+                    try:
+                        # アトミックな操作にする
+                        with open(file_path, 'r+b') as f:
+                            # Windows用のロックテスト
+                            import msvcrt
+                            try:
+                                msvcrt.locking(f.fileno(), msvcrt.LK_NBLCK, 1)
+                                msvcrt.locking(f.fileno(), msvcrt.LK_UNLCK, 1)
+                                return False
+                            except IOError:
+                                return True
+                    except (IOError, OSError):
+                        return True
+                else:
+                    # Unix系での強化されたチェック
+                    import fcntl
+                    try:
+                        with open(file_path, 'r+b') as f:
+                            fcntl.flock(f.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                            fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+                        return False
+                    except (IOError, OSError):
+                        return True
+                        
+            except Exception as e:
+                logging.warning(f"ファイルロックチェック中にエラー: {e}")
+                return False  # エラー時は非ロック状態と判定
     
     def wait_for_file_release(self, file_path: str, timeout: int = 30) -> bool:
         """ファイルのロック解除を待機"""

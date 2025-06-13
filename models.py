@@ -1,8 +1,8 @@
 """
 商品登録入力ツール - テーブルモデルモジュール
 """
-from typing import Optional, List, Dict, Any
-from PyQt5.QtCore import Qt, QAbstractTableModel, QModelIndex
+from typing import Optional, List, Dict, Any, Union
+from PyQt5.QtCore import Qt, QAbstractTableModel, QModelIndex, QVariant
 from PyQt5.QtGui import QColor
 
 from constants import (
@@ -28,7 +28,7 @@ class SkuTableModel(QAbstractTableModel):
     def columnCount(self, parent=QModelIndex()):
         return len(self._headers)
 
-    def data(self, index, role=Qt.DisplayRole):
+    def data(self, index: QModelIndex, role: int = Qt.DisplayRole) -> Union[str, QColor, None]:
         if not index.isValid() or not (0 <= index.row() < len(self._data) and 0 <= index.column() < len(self._headers)):
             return None
         row = index.row()
@@ -69,7 +69,7 @@ class SkuTableModel(QAbstractTableModel):
                 return str(section + 1)
         return None
 
-    def setData(self, index, value, role=Qt.EditRole):
+    def setData(self, index: QModelIndex, value: Any, role: int = Qt.EditRole) -> bool:
         if not index.isValid() or role != Qt.EditRole or \
            not (0 <= index.row() < len(self._data) and 0 <= index.column() < len(self._headers)):
             return False
@@ -77,17 +77,32 @@ class SkuTableModel(QAbstractTableModel):
         row = index.row()
         col = index.column()
         header_key = self._headers[col]
-        self._data[row][header_key] = str(value)
         
-        highlight_flag_key = f"_highlight_{header_key}"
-        if highlight_flag_key in self._data[row]:
-            self._data[row][highlight_flag_key] = False
+        # 実際のデータ変更をチェック
+        old_value = self._data[row].get(header_key, "")
+        new_value = str(value)
         
-        self.dataChanged.emit(index, index, [role])
-        
-        # ProductAppの参照を持っている場合はmark_dirtyを呼び出す
-        if hasattr(self.parent(), 'mark_dirty'):
-            self.parent().mark_dirty()
+        # 値が実際に変更された場合のみ処理
+        if old_value != new_value:
+            self._data[row][header_key] = new_value
+            
+            highlight_flag_key = f"_highlight_{header_key}"
+            if highlight_flag_key in self._data[row]:
+                self._data[row][highlight_flag_key] = False
+            
+            self.dataChanged.emit(index, index, [role])
+            
+            # ProductAppの参照を持っている場合はmark_dirtyを呼び出す
+            try:
+                parent_obj = self.parent()
+                if parent_obj is not None and hasattr(parent_obj, 'mark_dirty') and callable(getattr(parent_obj, 'mark_dirty', None)):
+                    parent_obj.mark_dirty()
+            except (AttributeError, TypeError) as e:
+                import logging
+                logging.debug(f"mark_dirty呼び出しでAttributeError/TypeError: {e}")
+            except Exception as e:
+                import logging
+                logging.warning(f"mark_dirty呼び出しで予期しないエラー: {e}", exc_info=True)
         
         return True
 

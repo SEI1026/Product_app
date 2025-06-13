@@ -93,7 +93,7 @@ class YSpecDefinitionLoader:
                                 "value_name": spec_value_name
                             })
                     
-                    if reader.line_num % (PROGRESS_UPDATE_ROW_INTERVAL * 2) == 0 and self.progress_dialog:
+                    if reader.line_num % (PROGRESS_UPDATE_ROW_INTERVAL * 4) == 0 and self.progress_dialog:
                         QApplication.processEvents()
                 
                 # temp_specs_by_cat_and_spec_id から self.spec_definitions に再構成
@@ -110,8 +110,12 @@ class YSpecDefinitionLoader:
 
         except FileNotFoundError:
             return
-        except UnicodeDecodeError:
-            logging.warning(f"Yahoo!スペック定義書 '{filepath}' のデコードに全てのエンコーディングで失敗しました。", exc_info=True)
+        except UnicodeDecodeError as e:
+            logging.error(f"エンコーディングエラー '{filepath}': {e}", exc_info=True)
+            raise UnicodeDecodeError(
+                e.encoding, e.object, e.start, e.end,
+                f"ファイル '{filepath}' の文字エンコーディングが正しくありません。UTF-8またはShift_JISで保存し直してください。"
+            )
         except csv.Error as e:
             logging.error(f"Yahoo!スペック定義書 '{filepath}' のCSVパースエラーが発生しました: {e}", exc_info=True)
         except MemoryError as e:
@@ -245,7 +249,7 @@ class RakutenAttributeDefinitionLoader:
                             self.recommended_values_map[key] = []
                         if rec_value not in self.recommended_values_map[key]:
                             self.recommended_values_map[key].append(rec_value)
-                    if reader.line_num % (PROGRESS_UPDATE_ROW_INTERVAL * 2) == 0:
+                    if reader.line_num % (PROGRESS_UPDATE_ROW_INTERVAL * 4) == 0:
                         QApplication.processEvents()
                         
         except FileNotFoundError:
@@ -398,13 +402,29 @@ def load_material_spec_master(filepath: str, progress_dialog: Optional[QDialog] 
     return master_data
 
 
-def load_id_master_data(filepath, id_col_header, name_col_header, hierarchy_col_header, 
+def load_id_master_data(filepath, id_col_header, name_col_header, hierarchy_col_header,
                        progress_dialog=None, file_label="IDマスター"):
     """IDマスターデータを読み込む"""
     all_searchable_data_list = []
-    effective_filepath = filepath
-    base_dir = sys._MEIPASS if getattr(sys, 'frozen', False) else os.path.dirname(os.path.abspath(__file__))
-    effective_filepath = os.path.join(base_dir, filepath)
+
+    # セキュリティ強化: ファイルパス検証
+    if not os.path.isabs(filepath):
+        base_dir = sys._MEIPASS if getattr(sys, 'frozen', False) else os.path.dirname(os.path.abspath(__file__))
+        # パス正規化でディレクトリトラバーサルを防ぐ
+        normalized_filepath = os.path.normpath(filepath)
+        if '..' in normalized_filepath or normalized_filepath.startswith(('/') if os.name != 'nt' else ('/', '\\')):
+            logging.error(f"セキュリティ警告: 不正なファイルパスが指定されました: {filepath}")
+            raise ValueError("不正なファイルパスです")
+        effective_filepath = os.path.join(base_dir, normalized_filepath)
+    else:
+        # 絶対パスの場合も検証
+        effective_filepath = os.path.abspath(os.path.normpath(filepath))
+        
+    # ファイルパスが許可された範囲内にあることを確認
+    allowed_base = os.path.abspath(".")
+    if not effective_filepath.startswith(allowed_base):
+        logging.error(f"セキュリティ警告: 許可されていないディレクトリへのアクセスが試行されました: {effective_filepath}")
+        raise ValueError("許可されていないファイルパスです")
 
     try:
         with open_csv_file_with_fallback(effective_filepath, 'r', progress_dialog, file_label) as (f, delimiter, encoding_name):

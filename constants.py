@@ -70,7 +70,6 @@ HEADER_IMAGE_DESCRIPTION = "画像説明"
 HEADER_YAHOO_ABSTRACT = "Y_abstract"
 
 # --- 材質・仕様マスター関連 ---
-MATERIAL_SPEC_MASTER_FILE_NAME = "材質・仕様マスタ.csv"
 MASTER_MATERIAL_SPEC_NAME_COL = "名称"  # CSVのA列ヘッダー
 MASTER_MATERIAL_SPEC_DESC_COL = "説明"  # CSVのB列ヘッダー
 
@@ -96,8 +95,15 @@ BYTE_LIMITS = {
     "Y_キャッチコピー": 60,
 }
 
-# HTML入力が想定される複数行フィールド
+# HTML入力が想定される複数行フィールド（サニタイゼーション強化対象）
 HTML_TEXTEDIT_FIELDS = ["特徴_1", "材質_1", "仕様_1"]
+
+# HTMLサニタイゼーション設定
+HTML_SANITIZE_CONFIG = {
+    "max_length": 5000,
+    "allowed_tags": ["br", "p", "strong", "em", "ul", "ol", "li"],
+    "strip_dangerous": True
+}
 
 # よく使われる商品色
 COMMON_PRODUCT_COLORS = [
@@ -106,21 +112,12 @@ COMMON_PRODUCT_COLORS = [
     "パープル", "シルバー", "ゴールド"
 ]
 
-# その他
-DEFAULT_ENCODING = "utf-8-sig"
-FALLBACK_ENCODING = "shift_jis"
-
 # タイマー設定（ミリ秒）
-AUTO_SAVE_INTERVAL_MS = 30000  # 30秒
 LOADING_ANIMATION_INTERVAL_MS = 200  # 200ミリ秒
 
 # UI関連の定数
 EXPANDABLE_GROUP_TOGGLE_BUTTON_SIZE = 20  # 展開ボタンのサイズ
-FROZEN_TABLE_COLUMN_COUNT = 2  # 固定テーブルの列数
 TABLE_PADDING = 2  # テーブルビューのパディング
-PROGRESS_UPDATE_ROW_INTERVAL = 100  # プログレス更新の行間隔
-MAX_WORKER_THREADS = 5  # 並列処理の最大ワーカー数
-DIGIT_COUNT_MYCODE_MAX = 10  # 商品コードの最大桁数
 
 # --- RakutenAttributeDefinitionLoader と関連定数 ---
 DEFINITION_CSV_FILE = "mystore_attribute_list_20250520.csv"

@@ -1,14 +1,16 @@
 """
 商品登録入力ツール - カスタムウィジェットモジュール
 """
+import logging
 from typing import Optional, List, Any
 from PyQt5.QtCore import Qt, QTimer, QSize
 from PyQt5.QtWidgets import (
     QTextEdit, QTableView, QWidget, QHBoxLayout, QLineEdit, QPushButton,
     QSizePolicy, QDialog, QListWidget, QListWidgetItem, QDialogButtonBox,
     QVBoxLayout, QStyledItemDelegate, QComboBox, QCompleter, QMessageBox,
-    QLabel, QProgressBar
+    QLabel, QProgressBar, QPlainTextEdit, QInputDialog, QAbstractItemView
 )
+from PyQt5.QtGui import QInputMethodEvent
 
 from constants import (
     HEADER_ATTR_VALUE_PREFIX, HEADER_ATTR_UNIT_PREFIX,
@@ -38,6 +40,59 @@ class CustomHtmlTextEdit(QTextEdit):
             super().keyPressEvent(event)  # その他のキーは通常通り処理
 
 
+class SimpleIMELineEdit(QLineEdit):
+    """シンプルなIME対応QLineEdit"""
+    
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        # 最小限の設定でIME問題を回避
+        self.setAttribute(Qt.WA_InputMethodEnabled, True)
+        self.setInputMethodHints(Qt.ImhNone)
+        self.setFocusPolicy(Qt.StrongFocus)
+        
+        # 日本語フォントを明示的に指定
+        from PyQt5.QtGui import QFont
+        font = QFont()
+        font.setFamily("Yu Gothic UI")  # Windows標準の日本語フォント
+        font.setPointSize(9)
+        self.setFont(font)
+        
+        self.setStyleSheet("""
+            QLineEdit { 
+                background-color: white;
+                border: 1px solid #ccc;
+                padding: 2px;
+                font-family: "Yu Gothic UI", "Meiryo UI", "MS UI Gothic";
+                font-size: 9pt;
+            }
+        """)
+    
+    def focusInEvent(self, event):
+        """フォーカス取得時の処理"""
+        super().focusInEvent(event)
+        # フォーカス取得時に全選択しない（IME問題回避）
+        self.deselect()
+        # カーソルを末尾に移動
+        self.setCursorPosition(len(self.text()))
+    
+    def setText(self, text):
+        """テキスト設定時にUTF-8処理を確実に行う"""
+        if isinstance(text, bytes):
+            try:
+                text = text.decode('utf-8')
+            except UnicodeDecodeError as e:
+                # デコードエラーの場合、エラー位置を記録して安全な文字列に変換
+                import logging
+                logging.warning(f"Unicode decode error in setText: {e}")
+                # 問題のある部分を?に置き換えて処理を継続
+                text = text.decode('utf-8', errors='replace')
+        elif text is None:
+            text = ""
+        else:
+            text = str(text)
+        super().setText(text)
+
+
 class FocusControllingTableView(QTableView):
     """フォーカス制御機能を持つテーブルビュー（固定列用）"""
     
@@ -45,11 +100,61 @@ class FocusControllingTableView(QTableView):
         super().__init__(parent)
         self.other_table_view = None  # ペアとなるテーブルビューを保持
         self.product_app_ref = product_app_instance  # ProductAppの参照を保持
+        # IME入力対応の強化
+        self.setAttribute(Qt.WA_InputMethodEnabled, True)
+        self.setAttribute(Qt.WA_KeyCompression, False)
+        self.setFocusPolicy(Qt.StrongFocus)
+        # シングルクリックで編集開始
+        self.setEditTriggers(QAbstractItemView.CurrentChanged | QAbstractItemView.SelectedClicked)
+        # 選択モードを行全体に設定
+        self.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.setSelectionMode(QAbstractItemView.ExtendedSelection)
+        
+        # TabキーナビゲーションをOFFにして、手動で制御
+        self.setTabKeyNavigation(False)
 
     def setOtherTableView(self, other_table):
         self.other_table_view = other_table
+    
+    def focusNextPrevChild(self, next):
+        """Tabキーナビゲーションを完全に制御"""
+        if (hasattr(self.product_app_ref, 'smart_navigation_enabled') and 
+            self.product_app_ref.smart_navigation_enabled):
+            
+            # 疑似的なキーイベントを作成
+            from PyQt5.QtGui import QKeyEvent
+            from PyQt5.QtCore import QEvent
+            
+            if next:  # Tab
+                fake_event = QKeyEvent(QEvent.KeyPress, Qt.Key_Tab, Qt.NoModifier)
+                self.product_app_ref._handle_sku_enter_navigation(self, fake_event)
+            else:  # Shift+Tab
+                fake_event = QKeyEvent(QEvent.KeyPress, Qt.Key_Backtab, Qt.ShiftModifier)
+                self.product_app_ref._handle_sku_backtab_navigation(self, fake_event)
+            
+            return True  # フォーカス移動を処理したと報告
+        
+        return super().focusNextPrevChild(next)
 
     def keyPressEvent(self, event):
+        # スマートナビゲーション有効時のTab/Enterキー処理
+        if (hasattr(self.product_app_ref, 'smart_navigation_enabled') and 
+            self.product_app_ref.smart_navigation_enabled):
+            
+            if event.key() == Qt.Key_Tab and not event.modifiers():
+                self.product_app_ref._handle_sku_enter_navigation(self, event)
+                event.accept()
+                return
+            elif event.key() == Qt.Key_Return:
+                self.product_app_ref._handle_sku_enter_navigation(self, event)
+                event.accept()
+                return
+            elif event.key() == Qt.Key_Backtab:
+                self.product_app_ref._handle_sku_backtab_navigation(self, event)
+                event.accept()
+                return
+        
+        # 従来のTab処理（スマートナビゲーション無効時）
         if not self.other_table_view or not self.model() or not self.currentIndex().isValid():
             super().keyPressEvent(event)
             return
@@ -90,11 +195,33 @@ class ScrollableFocusControllingTableView(QTableView):
         super().__init__(parent)
         self.other_table_view = None  # ペアとなるテーブルビューを保持
         self.product_app_ref = product_app_instance  # ProductAppの参照を保持
+        # IME入力対応の強化
+        self.setAttribute(Qt.WA_InputMethodEnabled, True)
+        self.setAttribute(Qt.WA_KeyCompression, False)
+        self.setFocusPolicy(Qt.StrongFocus)
+        # シングルクリックで編集開始
+        self.setEditTriggers(QAbstractItemView.CurrentChanged | QAbstractItemView.SelectedClicked)
+        # 選択モードを行全体に設定
+        self.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.setSelectionMode(QAbstractItemView.ExtendedSelection)
 
     def setOtherTableView(self, other_table):
         self.other_table_view = other_table
 
     def keyPressEvent(self, event):
+        # スマートナビゲーション有効時のEnterキー処理
+        if (hasattr(self.product_app_ref, 'smart_navigation_enabled') and 
+            self.product_app_ref.smart_navigation_enabled):
+            
+            if event.key() == Qt.Key_Return:
+                self.product_app_ref._handle_sku_enter_navigation(self, event)
+                event.accept()
+                return
+            elif event.key() == Qt.Key_Backtab:
+                self.product_app_ref._handle_sku_backtab_navigation(self, event)
+                event.accept()
+                return
+        
         if not self.other_table_view or not self.model() or not self.currentIndex().isValid():
             super().keyPressEvent(event)
             return
@@ -171,7 +298,8 @@ class SkuMultipleAttributeEditor(QWidget):
             
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        self.line_edit = QLineEdit(self)
+        layout.setSpacing(4)  # ボタンとLineEditの間隔を狭く
+        self.line_edit = SimpleIMELineEdit(self)
         self.line_edit.setReadOnly(not editable_line_edit)
         self.line_edit.setText(current_value_str)
         
@@ -183,10 +311,31 @@ class SkuMultipleAttributeEditor(QWidget):
         layout.addWidget(self.line_edit)
         layout.setStretchFactor(self.line_edit, 1)
 
-        self.select_button = QPushButton("選択...", self)
+        self.select_button = QPushButton("選択", self)
         self.select_button.clicked.connect(self.open_dialog)
-        self.select_button.setMinimumWidth(30)
-        self.select_button.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        self.select_button.setMaximumWidth(50)
+        # Tabナビゲーションから除外
+        self.select_button.setFocusPolicy(Qt.NoFocus)
+        # 高さ制限を緩めて自然なサイズに
+        self.select_button.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Preferred)
+        self.select_button.setStyleSheet("""
+            QPushButton {
+                padding: 1px 4px;
+                font-size: 9px;
+                border: 1px solid #cbd5e1;
+                border-radius: 2px;
+                background-color: #f8fafc;
+                min-height: 18px;
+                max-height: 22px;
+            }
+            QPushButton:hover {
+                background-color: #e2e8f0;
+                border-color: #94a3b8;
+            }
+            QPushButton:pressed {
+                background-color: #cbd5e1;
+            }
+        """)
 
         self.select_button.setVisible(bool(self.options))
         layout.addWidget(self.select_button)
@@ -305,12 +454,12 @@ class SkuAttributeDelegate(QStyledItemDelegate):
                             editor_combo.view().setMinimumWidth(max_w + 70)
                             return editor_combo
                         else:
-                            return QLineEdit(parent)
+                            return SimpleIMELineEdit(parent)
                     else:  # 複数選択・記述式
                         if options_list:
                             return SkuMultipleAttributeEditor(options_list, "", parent, editable_line_edit=True, delimiter_char='|')
                         else:
-                            editor_line_edit = QLineEdit(parent)
+                            editor_line_edit = SimpleIMELineEdit(parent)
                             editor_line_edit.setPlaceholderText("|区切りで複数入力")
                             return editor_line_edit
                 else:
@@ -330,7 +479,15 @@ class SkuAttributeDelegate(QStyledItemDelegate):
                     return combo
                 else:
                     pass  # Fall back to default editor if no specific unit options
-        return super().createEditor(parent, option, index)
+        
+        # デフォルトエディタを作成（IME対応強化）
+        editor = super().createEditor(parent, option, index)
+        if isinstance(editor, QLineEdit):
+            # 標準のQLineEditをカスタムIME対応版に置き換え
+            ime_editor = SimpleIMELineEdit(parent)
+            ime_editor.setText(editor.text())
+            return ime_editor
+        return editor
 
     def sizeHint(self, option, index):
         model = index.model()
@@ -377,8 +534,13 @@ class SkuAttributeDelegate(QStyledItemDelegate):
                     empty_idx = editor.findText("")
                     if empty_idx != -1:
                         editor.setCurrentIndex(empty_idx)
-        elif isinstance(editor, QLineEdit) and not isinstance(editor.parent(), SkuMultipleAttributeEditor):
-            editor.setText(str(value))
+        elif isinstance(editor, (QLineEdit, SimpleIMELineEdit)) and not isinstance(editor.parent(), SkuMultipleAttributeEditor):
+            text_value = str(value) if value is not None else ""
+            editor.setText(text_value)
+            # IME問題回避：全選択状態を解除し、カーソルを末尾に移動
+            if hasattr(editor, 'deselect'):
+                editor.deselect()
+                editor.setCursorPosition(len(text_value))
         else:
             super().setEditorData(editor, index)
 
@@ -386,18 +548,19 @@ class SkuAttributeDelegate(QStyledItemDelegate):
         current_editor_value = ""
         is_value_column_editor = False
         
+        # 入力値の取得と基本的なサニタイゼーション
         if isinstance(editor, SkuMultipleAttributeEditor):
-            current_editor_value = editor.text()
+            current_editor_value = self._sanitize_input(editor.text())
             is_value_column_editor = True
         elif isinstance(editor, QComboBox) and editor.isEditable():
-            current_editor_value = editor.currentText()
+            current_editor_value = self._sanitize_input(editor.currentText())
             is_value_column_editor = True
-        elif isinstance(editor, QLineEdit) and not isinstance(editor.parent(), SkuMultipleAttributeEditor):
-            current_editor_value = editor.text()
+        elif isinstance(editor, (QLineEdit, SimpleIMELineEdit)) and not isinstance(editor.parent(), SkuMultipleAttributeEditor):
+            current_editor_value = self._sanitize_input(editor.text())
             is_value_column_editor = True
         elif isinstance(editor, QComboBox) and not editor.isEditable():  # Unit column
             if editor.count() > 0:
-                current_editor_value = editor.currentText()
+                current_editor_value = self._sanitize_input(editor.currentText())
             else:
                 current_editor_value = ""
         else:
@@ -437,6 +600,42 @@ class SkuAttributeDelegate(QStyledItemDelegate):
                         else:
                             return
         model.setData(index, current_editor_value, Qt.EditRole)
+    
+    def _sanitize_input(self, text_value: str) -> str:
+        """入力値のサニタイゼーションとセキュリティ検証"""
+        if not isinstance(text_value, str):
+            text_value = str(text_value)
+        
+        # HTMLエスケープ処理
+        import html
+        sanitized = html.escape(text_value)
+        
+        # 最大長制限（XSSやバッファオーバーフロー対策）
+        MAX_INPUT_LENGTH = 1000
+        if len(sanitized) > MAX_INPUT_LENGTH:
+            logging.warning(f"入力値が最大長を超えています: {len(sanitized)} > {MAX_INPUT_LENGTH}")
+            sanitized = sanitized[:MAX_INPUT_LENGTH]
+        
+        # NULL文字やその他の制御文字を除去
+        sanitized = ''.join(char for char in sanitized if ord(char) >= 32 or char in '\t\n\r')
+        
+        # 危険な文字パターンの検出
+        dangerous_patterns = [
+            r'<script',
+            r'javascript:',
+            r'vbscript:',
+            r'on\w+\s*=',
+            r'expression\s*\(',
+        ]
+        
+        import re
+        for pattern in dangerous_patterns:
+            if re.search(pattern, sanitized, re.IGNORECASE):
+                logging.error(f"セキュリティ警告: 危険なパターンが検出されました: {pattern}")
+                # 危険なパターンを除去
+                sanitized = re.sub(pattern, '', sanitized, flags=re.IGNORECASE)
+        
+        return sanitized.strip()
     
 class LoadingDialog(QDialog):
     """起動時に表示される進捗ダイアログ"""

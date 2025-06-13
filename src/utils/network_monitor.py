@@ -301,11 +301,41 @@ def check_network_before_operation(operation_name: str, parent=None) -> bool:
             QMessageBox.Retry
         )
         
-        if reply == QMessageBox.Retry:
-            return check_network_before_operation(operation_name, parent)
-        elif reply == QMessageBox.Ignore:
+        # 無限再帰を防ぐためのリトライ機構
+        max_retries = 3
+        for retry_count in range(max_retries):
+            if reply != QMessageBox.Retry:
+                break
+                
+            # 少し待ってからリトライ
+            import time
+            time.sleep(1)
+            
+            # ネットワーク状態を再チェック
+            if monitor.check_network_status()["status"] == "connected":
+                return True
+            
+            # 最後のリトライでない場合のみ、再度ダイアログを表示
+            if retry_count < max_retries - 1:
+                reply = QMessageBox.question(
+                    parent,
+                    f"ネットワークエラー (試行 {retry_count + 2}/{max_retries})",
+                    f"""操作「{operation_name}」を実行するためにネットワーク接続が必要です。
+
+接続状況: 切断中
+
+ネットワーク接続を確認してから再試行してください。
+
+「再試行」: 再度接続を確認
+「無視」: オフラインで続行
+「キャンセル」: 操作を中止""",
+                    QMessageBox.Retry | QMessageBox.Ignore | QMessageBox.Cancel,
+                    QMessageBox.Retry
+                )
+        
+        if reply == QMessageBox.Ignore:
             return True  # オフラインで続行
         else:
-            return False  # キャンセル
+            return False  # キャンセルまたはリトライ上限
     
     return True

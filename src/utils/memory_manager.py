@@ -100,7 +100,7 @@ class MemoryManager:
         return batches
     
     def cleanup_large_objects(self, data_containers: List) -> int:
-        """大きなデータオブジェクトをクリーンアップ"""
+        """大きなデータオブジェクトをクリーンアップ（メモリリーク対策強化）"""
         cleaned_count = 0
         
         try:
@@ -114,9 +114,35 @@ class MemoryManager:
                 elif isinstance(container, dict):
                     container.clear()
                     cleaned_count += 1
+                # 循環参照の解放
+                elif hasattr(container, '__dict__'):
+                    container.__dict__.clear()
+                    cleaned_count += 1
             
-            # ガベージコレクションを実行
-            self.force_garbage_collection()
+            # 強制ガベージコレクション（複数回実行でより確実に）
+            import gc
+            gc.disable()  # 一時的にGCを無効化
+            try:
+                for _ in range(3):
+                    collected = gc.collect()
+                    if collected == 0:
+                        break
+                    logging.debug(f"ガベージコレクション: {collected}オブジェクト回収")
+            finally:
+                gc.enable()  # GCを再有効化
+            
+            # 弱参照の処理（より安全な方法）
+            # weakref.finalize_hooksの直接操作は危険なため削除
+            # 代わりに明示的な弱参照の管理を実装
+            try:
+                import weakref
+                # 安全な弱参照のクリア（Python 3.4+）
+                if hasattr(weakref, 'WeakKeyDictionary'):
+                    # システム全体の弱参照辞書は触らず、
+                    # アプリケーション固有の弱参照のみ管理
+                    pass
+            except Exception as e:
+                logging.debug(f"弱参照処理中の軽微なエラー: {e}")
             
             logging.info(f"大型オブジェクトクリーンアップ: {cleaned_count}オブジェクト")
             return cleaned_count

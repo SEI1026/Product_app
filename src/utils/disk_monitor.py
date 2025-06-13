@@ -7,7 +7,7 @@ import shutil
 import psutil
 import logging
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Any
 from PyQt5.QtWidgets import QMessageBox
 
 class DiskSpaceMonitor:
@@ -18,7 +18,7 @@ class DiskSpaceMonitor:
         self.warning_threshold_mb = 500  # 警告閾値（MB）
         self.critical_threshold_mb = 200  # 緊急閾値（MB）
     
-    def check_disk_space(self, path: str) -> Dict[str, any]:
+    def check_disk_space(self, path: str) -> Dict[str, Any]:
         """指定パスのディスク容量をチェック"""
         try:
             disk_usage = shutil.disk_usage(path)
@@ -76,7 +76,23 @@ class DiskSpaceMonitor:
         cleanup_candidates = []
         
         try:
-            dir_path = Path(directory)
+            # セキュリティ強化: パス正規化と検証
+            safe_directory = os.path.abspath(os.path.normpath(directory))
+            
+            # ディレクトリトラバーサル攻撃を防ぐ（より厳密な検証）
+            app_root = os.path.abspath(".")
+            try:
+                # commonpathを使用してより安全な検証
+                common_path = os.path.commonpath([safe_directory, app_root])
+                if common_path != app_root:
+                    logging.error(f"セキュリティ警告: 不正なディレクトリパスが指定されました: {directory}")
+                    raise ValueError("不正なディレクトリパスです")
+            except (ValueError, OSError) as e:
+                # commonpathが失敗した場合（異なるドライブなど）
+                logging.error(f"セキュリティ警告: パス検証でエラー: {e}")
+                raise ValueError("不正なディレクトリパスです")
+            
+            dir_path = Path(safe_directory)
             if not dir_path.exists():
                 return cleanup_candidates
             
@@ -252,8 +268,8 @@ def perform_disk_cleanup(directory: str, parent=None) -> bool:
     return False
 
 
-def monitor_disk_space_continuously(paths: List[str], parent=None):
-    """継続的なディスク容量監視"""
+def check_disk_space_once(paths: List[str], parent=None):
+    """指定されたパスのディスク容量を一度チェックして警告を表示"""
     monitor = DiskSpaceMonitor()
     
     for path in paths:

@@ -45,7 +45,11 @@ def open_csv_file_with_fallback(filepath, mode='r', progress_dialog=None, file_l
                 file_obj.seek(0)
                 delimiter = '\t' if '\t' in first_line and ',' not in first_line else ','
             
-            yield file_obj, delimiter, encoding
+            try:
+                yield file_obj, delimiter, encoding
+            finally:
+                if file_obj:
+                    file_obj.close()
             return  # 成功したら終了
         except UnicodeDecodeError:
             if file_obj: 
@@ -61,7 +65,7 @@ def open_csv_file_with_fallback(filepath, mode='r', progress_dialog=None, file_l
                 raise  # 最後のフォールバックでのエラー、またはFileNotFoundErrorは再発生
 
 
-@functools.lru_cache(maxsize=None)
+@functools.lru_cache(maxsize=1000)
 def normalize_text(text: Optional[Union[str, int, float]]) -> str:
     """全角英数字、記号、カタカナを半角に、ひらがなをカタカナに変換し、大文字にする"""
     if text is None: 
@@ -72,7 +76,7 @@ def normalize_text(text: Optional[Union[str, int, float]]) -> str:
     return ''.join(chr(ord(ch) + 0x60) if 'ぁ' <= ch <= 'ん' else ch for ch in text_str)
 
 
-@functools.lru_cache(maxsize=None)
+@functools.lru_cache(maxsize=500)
 def normalize_wave_dash(text: Optional[Union[str, int, float]]) -> str:
     """波ダッシュ(〜)とチルダ(~)を全角チルダ(～)に変換"""
     if text is None: 

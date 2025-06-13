@@ -151,17 +151,17 @@ if errorlevel 1 (
     exit /b 1
 )
 
-if not exist "dist\ProductRegisterTool.exe" (
+if not exist "dist\商品登録入力ツール.exe" (
     echo ERROR: EXE file not created
     pause
     exit /b 1
 )
 
-for %%I in ("dist\ProductRegisterTool.exe") do echo EXE build completed: %%~zI bytes
+for %%I in ("dist\商品登録入力ツール.exe") do echo EXE build completed: %%~zI bytes
 
 echo [7/10] Creating ZIP package...
 mkdir dist\package_temp
-copy "dist\ProductRegisterTool.exe" "dist\package_temp\!DISPLAY_NAME!.exe" >nul
+copy "dist\商品登録入力ツール.exe" "dist\package_temp\!DISPLAY_NAME!.exe" >nul
 
 :: Create clean Excel files without test data  
 echo Creating clean Excel files for distribution...
