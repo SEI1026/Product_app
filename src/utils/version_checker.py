@@ -14,6 +14,7 @@ import urllib.error
 import webbrowser
 import re
 import time
+import hashlib
 import requests
 from typing import Optional, Dict, Any, Tuple
 from urllib.request import urlopen, Request
@@ -214,6 +215,23 @@ class UpdateDownloader(QThread):
                 logging.warning(error_msg)
                 self._write_crash_log(crash_log_file, f"エラー: {error_msg}\n")
                 return
+            
+            # ハッシュ検証
+            step = "ハッシュ検証"
+            self.status.emit("ダウンロードファイルを検証中...")
+            logging.info("ハッシュ検証処理開始")
+            self._write_crash_log(crash_log_file, f"ステップ: {step} - ハッシュ検証開始\n")
+            
+            hash_success = self._verify_file_hash()
+            if not hash_success or self._cancelled:
+                error_msg = "ファイルのハッシュ検証に失敗しました"
+                logging.error(error_msg)
+                self._write_crash_log(crash_log_file, f"エラー: {error_msg}\n")
+                self.finished.emit(False, "ダウンロードファイルの整合性検証に失敗しました")
+                return
+            
+            logging.info("ハッシュ検証完了")
+            self._write_crash_log(crash_log_file, f"ハッシュ検証完了\n")
                 
             # 展開
             step = "ZIP展開"
@@ -422,6 +440,42 @@ class UpdateDownloader(QThread):
                     response.close()
                 except Exception as e:
                     logging.warning(f"レスポンスクローズエラー: {e}")
+    
+    def _verify_file_hash(self):
+        """ダウンロードファイルのSHA-256ハッシュを検証"""
+        if not os.path.exists(self.temp_file):
+            logging.error("ハッシュ検証: ファイルが存在しません")
+            return False
+            
+        try:
+            # 期待されるハッシュ値を取得
+            expected_hash = None
+            if hasattr(self, 'version_info') and self.version_info:
+                expected_hash = self.version_info.get('file_hash_sha256')
+            
+            if not expected_hash or expected_hash == "example_hash_placeholder_to_be_replaced_with_actual_hash":
+                logging.warning("ハッシュ検証: 期待ハッシュが設定されていません - スキップします")
+                return True  # 後方互換性のため、ハッシュがない場合は成功とする
+            
+            # ファイルのハッシュを計算
+            sha256_hash = hashlib.sha256()
+            with open(self.temp_file, 'rb') as f:
+                for chunk in iter(lambda: f.read(4096), b""):
+                    sha256_hash.update(chunk)
+            
+            calculated_hash = sha256_hash.hexdigest()
+            
+            # ハッシュを比較
+            if calculated_hash.lower() == expected_hash.lower():
+                logging.info("ハッシュ検証: 成功")
+                return True
+            else:
+                logging.error(f"ハッシュ検証: 失敗 - 期待値: {expected_hash}, 実際値: {calculated_hash}")
+                return False
+                
+        except Exception as e:
+            logging.error(f"ハッシュ検証エラー: {e}")
+            return False
     
     def _extract_zip(self):
         """ZIPファイルの展開"""

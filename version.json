@@ -2,8 +2,10 @@
     "version":  "2.6.3",
     "release_date":  "2025-06-13",
     "download_url":  "https://github.com/SEI1026/Product_app/releases/download/v2.6.3/ProductRegisterTool-v2.6.3.zip",
+    "file_hash_sha256":  "example_hash_placeholder_to_be_replaced_with_actual_hash",
     "minimum_required_version":  "2.0.0",
     "_comment_download_url":  "GitHub Releases URL for auto-update",
+    "_comment_file_hash":  "SHA-256 hash for download integrity verification",
     "_comment_company":  "Product Registration Tool by Daihokagu",
     "changelog":  {
                       "v2.5.7":  {
@@ -21,7 +23,7 @@
                                                       ],
                                      "bug_fixes":  [
                                                        "Fixed .new file not being created during updates",
-                                                       "Resolved \u0027縺薙・繧｢繝励Μ縺ｯ縺贋ｽｿ縺・・PC縺ｧ縺ｯ螳溯｡後〒縺阪∪縺帙ｓ\u0027 error",
+                                                       "Resolved \u0027縺難ｿｽE繧｢繝励Μ縺ｯ縺贋ｽｿ縺・・ｽEPC縺ｧ縺ｯ螳溯｡後〒縺阪∪縺帙ｓ\u0027 error",
                                                        "Fixed PowerShell script execution issues"
                                                    ]
                                  },
