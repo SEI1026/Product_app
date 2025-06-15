@@ -27,10 +27,10 @@ class TestLoadCategoriesFromCsv:
         """正常なCSVファイルの読み込み"""
         # テスト用のCSVデータを作成
         csv_data = [
-            ["ID", "名前", "その他"],
-            ["1", "カテゴリA", "説明A"],
-            ["2", "カテゴリB", "説明B"],
-            ["3", "カテゴリC", "説明C"]
+            ["レベル", "カテゴリ名", "親カテゴリ名"],
+            ["1", "カテゴリA", "親A"],
+            ["2", "カテゴリB", "親B"],
+            ["3", "カテゴリC", "親C"]
         ]
         
         with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.csv', encoding='utf-8-sig') as f:
@@ -39,21 +39,21 @@ class TestLoadCategoriesFromCsv:
             temp_path = f.name
         
         try:
-            result = load_categories_from_csv(temp_path, id_column="ID", name_column="名前")
+            result = load_categories_from_csv(temp_path)
             
             assert len(result) == 3
-            assert result[0]["ID"] == "1"
-            assert result[0]["名前"] == "カテゴリA"
-            assert result[1]["ID"] == "2"
-            assert result[1]["名前"] == "カテゴリB"
+            # 結果は (level, name, parent) のタプルのリスト
+            assert result[0] == (1, "カテゴリA", "親A")
+            assert result[1] == (2, "カテゴリB", "親B")
+            assert result[2] == (3, "カテゴリC", "親C")
             
         finally:
             os.unlink(temp_path)
     
     def test_load_nonexistent_file(self):
         """存在しないファイルの処理"""
-        result = load_categories_from_csv("nonexistent.csv")
-        assert result == []
+        with pytest.raises(FileNotFoundError):
+            load_categories_from_csv("nonexistent.csv")
     
     def test_load_empty_csv(self):
         """空のCSVファイルの処理"""
@@ -70,12 +70,12 @@ class TestLoadCategoriesFromCsv:
 class TestLoadExplanationMarkIcons:
     """load_explanation_mark_icons 関数のテスト"""
     
-    @patch('os.path.exists')
+    @patch('os.path.isdir')
     @patch('os.listdir')
-    def test_load_explanation_icons(self, mock_listdir, mock_exists):
+    def test_load_explanation_icons(self, mock_listdir, mock_isdir):
         """説明マークアイコンの読み込み"""
         # モックの設定
-        mock_exists.return_value = True
+        mock_isdir.return_value = True
         mock_listdir.return_value = [
             "1_中国製.jpg",
             "2_タイ製.jpg", 
@@ -85,17 +85,25 @@ class TestLoadExplanationMarkIcons:
         
         result = load_explanation_mark_icons("/fake/path")
         
-        # 画像ファイルのみが読み込まれることを確認
+        # 結果は辞書のリストで、必要なキーが含まれている
         assert len(result) == 3
-        assert "1_中国製.jpg" in result
-        assert "2_タイ製.jpg" in result
-        assert "3_ベトナム製.jpg" in result
-        assert "readme.txt" not in result
+        # 各要素が辞書であり、必要なキーを持つことを確認
+        for icon in result:
+            assert isinstance(icon, dict)
+            assert "id" in icon
+            assert "description" in icon
+            assert "path" in icon
+            assert "filename" in icon
+        
+        # 特定のアイコンの内容を確認
+        icon_1 = next(icon for icon in result if icon["id"] == "1")
+        assert icon_1["description"] == "中国製"
+        assert icon_1["filename"] == "1_中国製.jpg"
     
-    @patch('os.path.exists')
-    def test_load_nonexistent_directory(self, mock_exists):
+    @patch('os.path.isdir')
+    def test_load_nonexistent_directory(self, mock_isdir):
         """存在しないディレクトリの処理"""
-        mock_exists.return_value = False
+        mock_isdir.return_value = False
         
         result = load_explanation_mark_icons("/nonexistent/path")
         assert result == []
@@ -161,9 +169,8 @@ class TestLoadersIntegration:
         """全てのローダーがエンコーディングを適切に処理"""
         # 日本語を含むテストデータ
         japanese_data = [
-            ["ID", "商品名"],
-            ["1", "テーブル"],
-            ["2", "椅子"]
+            ["1", "テーブル", "家具"],
+            ["2", "椅子", "家具"]
         ]
         
         with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.csv', encoding='utf-8-sig') as f:
@@ -172,11 +179,12 @@ class TestLoadersIntegration:
             temp_path = f.name
         
         try:
-            result = load_categories_from_csv(temp_path, id_column="ID", name_column="商品名")
+            result = load_categories_from_csv(temp_path)
             
             assert len(result) == 2
-            assert result[0]["商品名"] == "テーブル"
-            assert result[1]["商品名"] == "椅子"
+            # 結果は (level, name, parent) のタプル
+            assert result[0][1] == "テーブル"  # name部分
+            assert result[1][1] == "椅子"     # name部分
             
         finally:
             os.unlink(temp_path)

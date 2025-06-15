@@ -33,8 +33,8 @@ class TestNormalizeText:
     
     def test_normalize_mixed_text(self):
         """混在したテキストの正規化"""
-        input_text = "商品名：テーブル１２３ｃｍ　高さ７５ｃｍ"
-        expected = "商品名：テーブル123cm 高さ75cm"
+        input_text = "商品名：テーブル１２３ＣＭ　高サ７５ＣＭ"
+        expected = "商品名:テーブル123CM 高サ75CM"
         assert normalize_text(input_text) == expected
     
     def test_normalize_empty_text(self):

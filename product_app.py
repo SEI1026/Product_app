@@ -7,7 +7,7 @@ import traceback
 import concurrent.futures
 import json
 from shutil import copyfile
-from PyQt5.QtGui import QColor, QFontMetrics, QRegExpValidator, QDoubleValidator, QKeySequence
+from PyQt5.QtGui import QColor, QFontMetrics, QRegExpValidator, QDoubleValidator, QKeySequence, QPixmap
 from PyQt5.QtWidgets import (QCompleter,
     QApplication, QWidget, QVBoxLayout, QHBoxLayout, QLineEdit, QTextEdit, QLabel,
     QFormLayout, QScrollArea, QPushButton, QListWidget, QMessageBox, QInputDialog, QMenu, QAction, QMenuBar,
