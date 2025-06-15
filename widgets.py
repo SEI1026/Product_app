@@ -454,12 +454,12 @@ class SkuAttributeDelegate(QStyledItemDelegate):
                             editor_combo.view().setMinimumWidth(max_w + 70)
                             return editor_combo
                         else:
-                            return SimpleIMELineEdit(parent)
+                            return JapaneseSimpleIMELineEdit(parent)
                     else:  # 複数選択・記述式
                         if options_list:
                             return SkuMultipleAttributeEditor(options_list, "", parent, editable_line_edit=True, delimiter_char='|')
                         else:
-                            editor_line_edit = SimpleIMELineEdit(parent)
+                            editor_line_edit = JapaneseSimpleIMELineEdit(parent)
                             editor_line_edit.setPlaceholderText("|区切りで複数入力")
                             return editor_line_edit
                 else:
@@ -484,7 +484,7 @@ class SkuAttributeDelegate(QStyledItemDelegate):
         editor = super().createEditor(parent, option, index)
         if isinstance(editor, QLineEdit):
             # 標準のQLineEditをカスタムIME対応版に置き換え
-            ime_editor = SimpleIMELineEdit(parent)
+            ime_editor = JapaneseSimpleIMELineEdit(parent)
             ime_editor.setText(editor.text())
             return ime_editor
         return editor
@@ -912,3 +912,48 @@ class JapaneseHtmlTextEdit(CustomHtmlTextEdit):
         cursor = self.textCursor()
         if cursor.hasSelection():
             cursor.removeSelectedText()
+
+
+class JapaneseSimpleIMELineEdit(JapaneseLineEdit):
+    """日本語コンテキストメニュー付きのIME対応QLineEdit"""
+    
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        # IME問題を回避する設定
+        self.setAttribute(Qt.WA_InputMethodEnabled, True)
+        self.setInputMethodHints(Qt.ImhNone)
+        self.setFocusPolicy(Qt.StrongFocus)
+        
+        # 日本語フォントを明示的に指定
+        from PyQt5.QtGui import QFont
+        font = QFont()
+        font.setFamily("Yu Gothic UI")  # Windows標準の日本語フォント
+        font.setPointSize(9)
+        self.setFont(font)
+        
+        self.setStyleSheet("""
+            QLineEdit { 
+                background-color: white;
+                border: 1px solid #ccc;
+                padding: 2px;
+                font-family: "Yu Gothic UI", "Meiryo UI", "MS UI Gothic";
+                font-size: 9pt;
+            }
+        """)
+    
+    def focusInEvent(self, event):
+        """フォーカス取得時の処理"""
+        super().focusInEvent(event)
+        # IMEを確実に有効化
+        self.setAttribute(Qt.WA_InputMethodEnabled, True)
+    
+    def inputMethodEvent(self, event):
+        """IME入力イベントの処理"""
+        # 通常の処理を実行
+        super().inputMethodEvent(event)
+        # 変換中のテキストがある場合は、その長さを保持
+        preedit_str = event.preeditString()
+        if preedit_str:
+            self.setProperty("ime_preedit_length", len(preedit_str))
+        else:
+            self.setProperty("ime_preedit_length", 0)
