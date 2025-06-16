@@ -298,7 +298,7 @@ if not errorlevel 1 (
     git status --short
     
     echo Adding all tracked files and version updates to Git...
-    git add .
+    git add -A
     git add version.json src\utils\version_checker.py
     
     echo Committing all changes including version updates...
