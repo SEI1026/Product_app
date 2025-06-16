@@ -2893,6 +2893,7 @@ class ProductApp(QWidget):
                             def create_smart_keypress(original_func, widget_ref, field_name_ref):
                                 def smart_keyPressEvent(event):
                                     if hasattr(self, 'smart_navigation_enabled') and self.smart_navigation_enabled:
+                                                                
                                         # EnterキーまたはTabキーでの移動処理を統一
                                         if ((event.key() == Qt.Key_Return and not (event.modifiers() & (Qt.ShiftModifier | Qt.ControlModifier))) or
                                             (event.key() == Qt.Key_Tab and not event.modifiers())):
@@ -2901,7 +2902,7 @@ class ProductApp(QWidget):
                                                 self._handle_enter_navigation(widget_ref, field_name_ref)
                                                 event.accept()
                                                 return
-                                            except Exception:
+                                            except Exception as e:
                                                 pass
                                         # Shift+Tabキーの処理
                                         elif event.key() == Qt.Key_Backtab:
@@ -2993,34 +2994,25 @@ class ProductApp(QWidget):
                 if hasattr(group, 'group_label_prefix') and group.group_label_prefix == "商品サイズ":
                     # 寸法フィールドの設定
                     if hasattr(group, 'dimension_fields_list'):
-                        # DEBUG: removed - print(f"DEBUG: dimension_fields_list has {len(group.dimension_fields_list)} items")
                         for i, dim_data in enumerate(group.dimension_fields_list):
                             if dim_data and isinstance(dim_data, dict):
-                                # DEBUG: removed - print(f"DEBUG: Setting up dimension fields for row {i}, keys: {list(dim_data.keys())}")
                                 # 幅フィールド
                                 if 'width' in dim_data and dim_data['width']:
-                                    # DEBUG: removed - print(f"DEBUG: Setting up width field for row {i}")
                                     self._setup_dimension_field_navigation(dim_data['width'], i, 'width')
                                 # 奥行フィールド
                                 if 'depth' in dim_data and dim_data['depth']:
-                                    # DEBUG: removed - print(f"DEBUG: Setting up depth field for row {i}")
                                     self._setup_dimension_field_navigation(dim_data['depth'], i, 'depth')
                                 # 高さフィールド
                                 if 'height' in dim_data and dim_data['height']:
-                                    # DEBUG: removed - print(f"DEBUG: Setting up height field for row {i}")
                                     self._setup_dimension_field_navigation(dim_data['height'], i, 'height')
                     else:
-                        pass  # dimension_fields_list が存在しない場合
                     
                     # 重量フィールドの設定
                     if hasattr(group, 'weight_fields_list'):
-                        # DEBUG: removed - print(f"DEBUG: weight_fields_list has {len(group.weight_fields_list)} items")
                         for i, weight_data in enumerate(group.weight_fields_list):
                             if weight_data and isinstance(weight_data, dict) and 'field' in weight_data and weight_data['field']:
-                                # DEBUG: removed - print(f"DEBUG: Setting up weight field for row {i}")
                                 self._setup_weight_field_navigation(weight_data['field'], i)
                     else:
-                        pass  # weight_fields_list が存在しない場合
                     break
             else:
                 pass  # 商品サイズグループが見つからない場合
@@ -3043,6 +3035,7 @@ class ProductApp(QWidget):
         
         def dimension_keyPressEvent(event):
             if hasattr(self, 'smart_navigation_enabled') and self.smart_navigation_enabled:
+                
                 # EnterキーまたはTabキーでの移動処理を統一
                 if ((event.key() == Qt.Key_Return and not (event.modifiers() & (Qt.ShiftModifier | Qt.ControlModifier))) or
                     (event.key() == Qt.Key_Tab and not event.modifiers())):
@@ -3051,7 +3044,7 @@ class ProductApp(QWidget):
                         self._handle_dimension_navigation(row_idx, field_type)
                         event.accept()
                         return
-                    except Exception:
+                    except Exception as e:
                         pass
                 elif event.key() == Qt.Key_Backtab:
                     # Shift+Tabキーでの逆方向移動
@@ -3076,6 +3069,7 @@ class ProductApp(QWidget):
         
         def weight_keyPressEvent(event):
             if hasattr(self, 'smart_navigation_enabled') and self.smart_navigation_enabled:
+                
                 # EnterキーまたはTabキーでの移動処理を統一
                 if ((event.key() == Qt.Key_Return and not (event.modifiers() & (Qt.ShiftModifier | Qt.ControlModifier))) or
                     (event.key() == Qt.Key_Tab and not event.modifiers())):
@@ -3085,7 +3079,7 @@ class ProductApp(QWidget):
                         self._handle_enter_navigation(None, current_field_name)
                         event.accept()
                         return
-                    except Exception:
+                    except Exception as e:
                         pass
                 elif event.key() == Qt.Key_Backtab:
                     # Shift+Tabキーでの逆方向移動
@@ -3373,6 +3367,7 @@ class ProductApp(QWidget):
                 next_field_name = self.main_field_order[i]
                 next_widget = None
                 
+                
                 # Y_specフィールドの特別処理
                 if next_field_name.startswith("Y_spec") and next_field_name[6:].isdigit():
                     try:
@@ -3385,16 +3380,37 @@ class ProductApp(QWidget):
                         pass
                 else:
                     # 通常のmain_fieldsフィールドの処理
+                    
                     if (next_field_name in self.main_fields and 
                         self.main_fields[next_field_name] and
                         self.main_fields[next_field_name].isEnabled() and
                         hasattr(self.main_fields[next_field_name], 'setFocus')):
                         
-                        # ExpandableFieldGroupに含まれるフィールドが閉じられている場合はスキップ
-                        if not self.main_fields[next_field_name].isVisible():
+                        # 商品サイズフィールドの特別処理
+                        if next_field_name.startswith("商品サイズ_"):
+                            # aフィールドの場合は可視性をチェック
+                            if next_field_name.endswith("a"):
+                                if not self.main_fields[next_field_name].isVisible():
+                                    continue
+                                else:
+                                    next_widget = self.main_fields[next_field_name]
+                            # bフィールドの場合は、対応するaフィールドが表示されている場合のみ移動対象とする
+                            elif next_field_name.endswith("b"):
+                                # 対応するaフィールド名を取得（商品サイズ_1b → 商品サイズ_1a）
+                                a_field_name = next_field_name[:-1] + "a"
+                                if (a_field_name in self.main_fields and 
+                                    self.main_fields[a_field_name] and
+                                    self.main_fields[a_field_name].isVisible()):
+                                    # 対応するaフィールドが表示されている場合のみ移動
+                                    next_widget = self.main_fields[next_field_name]
+                                else:
+                                    # 対応するaフィールドが非表示の場合はスキップ
+                                    continue
+                        elif not self.main_fields[next_field_name].isVisible():
+                            # その他のフィールドで非表示の場合はスキップ
                             continue
-                        
-                        next_widget = self.main_fields[next_field_name]
+                        else:
+                            next_widget = self.main_fields[next_field_name]
                 
                 # ウィジェットが見つかった場合、フォーカスを移動
                 if next_widget and hasattr(next_widget, 'setFocus'):
@@ -3415,24 +3431,31 @@ class ProductApp(QWidget):
                                             # 現在表示されているウィジェットにフォーカスを設定
                                             if hasattr(current_widget, 'setFocus'):
                                                 current_widget.setFocus()
-                                                # 寸法入力の場合は最初のフィールドにフォーカス
-                                                if (hasattr(group, 'dimension_fields_list') and
-                                                    row_idx < len(group.dimension_fields_list)):
-                                                    dim_data = group.dimension_fields_list[row_idx]
-                                                    if current_widget == dim_data.get('container'):
+                                                # スタックのインデックスから適切なフィールドにフォーカスを設定
+                                                stack_index = stack.currentIndex()
+                                                
+                                                if stack_index == 1:  # 寸法入力
+                                                    if (hasattr(group, 'dimension_fields_list') and
+                                                        row_idx < len(group.dimension_fields_list)):
+                                                        dim_data = group.dimension_fields_list[row_idx]
                                                         if 'width' in dim_data and dim_data['width']:
                                                             dim_data['width'].setFocus()
-                                                # 重量入力の場合
-                                                elif (hasattr(group, 'weight_fields_list') and
-                                                      row_idx < len(group.weight_fields_list)):
-                                                    weight_data = group.weight_fields_list[row_idx]
-                                                    if current_widget == weight_data.get('container'):
+                                                elif stack_index == 2:  # 重量入力
+                                                    if (hasattr(group, 'weight_fields_list') and
+                                                        row_idx < len(group.weight_fields_list)):
+                                                        weight_data = group.weight_fields_list[row_idx]
                                                         if 'field' in weight_data and weight_data['field']:
                                                             weight_data['field'].setFocus()
+                                                            weight_data['field'].selectAll()
+                                                        else:
+                                                    else:
+                                                else:
                                             next_widget.setFocus()  # フォールバック
                                             self._ensure_field_visible(next_widget)
                                             return
-                                except (ValueError, IndexError):
+                                        else:
+                                    else:
+                                except (ValueError, IndexError) as e:
                                     pass
                                 break
                     
