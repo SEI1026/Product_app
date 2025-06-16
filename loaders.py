@@ -421,9 +421,16 @@ def load_id_master_data(filepath, id_col_header, name_col_header, hierarchy_col_
         effective_filepath = os.path.abspath(os.path.normpath(filepath))
         
     # ファイルパスが許可された範囲内にあることを確認
-    allowed_base = os.path.abspath(".")
+    # .exe化時はsys._MEIPASSを、通常実行時は現在のディレクトリを許可範囲とする
+    if getattr(sys, 'frozen', False):
+        allowed_base = os.path.abspath(sys._MEIPASS)
+    else:
+        allowed_base = os.path.abspath(".")
+    
     if not effective_filepath.startswith(allowed_base):
         logging.error(f"セキュリティ警告: 許可されていないディレクトリへのアクセスが試行されました: {effective_filepath}")
+        logging.error(f"  実際のパス: {effective_filepath}")
+        logging.error(f"  許可ベース: {allowed_base}")
         raise ValueError("許可されていないファイルパスです")
 
     try:
