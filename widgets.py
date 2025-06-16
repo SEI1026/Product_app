@@ -8,7 +8,8 @@ from PyQt5.QtWidgets import (
     QTextEdit, QTableView, QWidget, QHBoxLayout, QLineEdit, QPushButton,
     QSizePolicy, QDialog, QListWidget, QListWidgetItem, QDialogButtonBox,
     QVBoxLayout, QStyledItemDelegate, QComboBox, QCompleter, QMessageBox,
-    QLabel, QProgressBar, QPlainTextEdit, QInputDialog, QAbstractItemView
+    QLabel, QProgressBar, QPlainTextEdit, QInputDialog, QAbstractItemView,
+    QApplication, QAbstractItemDelegate
 )
 from PyQt5.QtGui import QInputMethodEvent
 
@@ -16,6 +17,8 @@ from constants import (
     HEADER_ATTR_VALUE_PREFIX, HEADER_ATTR_UNIT_PREFIX,
     HEADER_ATTR_ITEM_PREFIX
 )
+
+
 
 
 class CustomHtmlTextEdit(QTextEdit):
@@ -100,6 +103,7 @@ class FocusControllingTableView(QTableView):
         super().__init__(parent)
         self.other_table_view = None  # ペアとなるテーブルビューを保持
         self.product_app_ref = product_app_instance  # ProductAppの参照を保持
+        self._row_header_clicked = False  # 行ヘッダークリックフラグ
         # IME入力対応の強化
         self.setAttribute(Qt.WA_InputMethodEnabled, True)
         self.setAttribute(Qt.WA_KeyCompression, False)
@@ -112,9 +116,50 @@ class FocusControllingTableView(QTableView):
         
         # TabキーナビゲーションをOFFにして、手動で制御
         self.setTabKeyNavigation(False)
+        
+        # 行ヘッダーのクリック処理を設定
+        self.verticalHeader().sectionPressed.connect(self._on_row_header_clicked)
 
     def setOtherTableView(self, other_table):
         self.other_table_view = other_table
+    
+    def _on_row_header_clicked(self, logical_index):
+        """行ヘッダーがクリックされたときの処理"""
+        # 行ヘッダークリックフラグを設定
+        self._row_header_clicked = True
+        
+        # 編集状態を強制終了（現在編集中のセルがあれば）
+        current_index = self.currentIndex()
+        if self.state() == QAbstractItemView.EditingState and current_index.isValid():
+            self.closePersistentEditor(current_index)
+            
+        # 行を選択（編集状態にはしない）
+        self.selectRow(logical_index)
+        
+        # フラグをリセット（遅延実行）
+        QTimer.singleShot(100, lambda: setattr(self, '_row_header_clicked', False))
+    
+    def edit(self, index, trigger, event):
+        """編集開始をコントロール - 行ヘッダークリック時は編集しない"""
+        if self._row_header_clicked:
+            return False
+        return super().edit(index, trigger, event)
+    
+    def mousePressEvent(self, event):
+        """マウスクリックイベントの処理 - 行ヘッダークリック時の編集防止"""
+        index = self.indexAt(event.pos())
+        vheader_width = self.verticalHeader().width()
+        
+        # 行ヘッダー部分がクリックされた場合
+        if event.pos().x() < vheader_width:
+            # 行を選択するが編集状態にはしない
+            if index.isValid():
+                self.selectRow(index.row())
+            event.accept()
+            return
+        
+        # 通常のセルクリックは元の処理
+        super().mousePressEvent(event)
     
     def focusNextPrevChild(self, next):
         """Tabキーナビゲーションを完全に制御"""
@@ -153,6 +198,18 @@ class FocusControllingTableView(QTableView):
                 self.product_app_ref._handle_sku_backtab_navigation(self, event)
                 event.accept()
                 return
+        
+        # SKU削除のDeleteキー処理
+        if event.key() == Qt.Key_Delete:
+            # フォーカスがあるウィジェットがエディタでない場合のみ行削除実行
+            focused_widget = QApplication.focusWidget()
+            if (not focused_widget or 
+                not isinstance(focused_widget, (QLineEdit, QTextEdit, QPlainTextEdit))):
+                
+                if self.product_app_ref and hasattr(self.product_app_ref, 'delete_selected_skus'):
+                    self.product_app_ref.delete_selected_skus()
+                    event.accept()
+                    return
         
         # 従来のTab処理（スマートナビゲーション無効時）
         if not self.other_table_view or not self.model() or not self.currentIndex().isValid():
@@ -195,6 +252,7 @@ class ScrollableFocusControllingTableView(QTableView):
         super().__init__(parent)
         self.other_table_view = None  # ペアとなるテーブルビューを保持
         self.product_app_ref = product_app_instance  # ProductAppの参照を保持
+        self._row_header_clicked = False  # 行ヘッダークリックフラグ
         # IME入力対応の強化
         self.setAttribute(Qt.WA_InputMethodEnabled, True)
         self.setAttribute(Qt.WA_KeyCompression, False)
@@ -204,9 +262,50 @@ class ScrollableFocusControllingTableView(QTableView):
         # 選択モードを行全体に設定
         self.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.setSelectionMode(QAbstractItemView.ExtendedSelection)
+        
+        # 行ヘッダーのクリック処理を設定
+        self.verticalHeader().sectionPressed.connect(self._on_row_header_clicked)
 
     def setOtherTableView(self, other_table):
         self.other_table_view = other_table
+    
+    def _on_row_header_clicked(self, logical_index):
+        """行ヘッダーがクリックされたときの処理"""
+        # 行ヘッダークリックフラグを設定
+        self._row_header_clicked = True
+        
+        # 編集状態を強制終了（現在編集中のセルがあれば）
+        current_index = self.currentIndex()
+        if self.state() == QAbstractItemView.EditingState and current_index.isValid():
+            self.closePersistentEditor(current_index)
+            
+        # 行を選択（編集状態にはしない）
+        self.selectRow(logical_index)
+        
+        # フラグをリセット（遅延実行）
+        QTimer.singleShot(100, lambda: setattr(self, '_row_header_clicked', False))
+    
+    def edit(self, index, trigger, event):
+        """編集開始をコントロール - 行ヘッダークリック時は編集しない"""
+        if self._row_header_clicked:
+            return False
+        return super().edit(index, trigger, event)
+    
+    def mousePressEvent(self, event):
+        """マウスクリックイベントの処理 - 行ヘッダークリック時の編集防止"""
+        index = self.indexAt(event.pos())
+        vheader_width = self.verticalHeader().width()
+        
+        # 行ヘッダー部分がクリックされた場合
+        if event.pos().x() < vheader_width:
+            # 行を選択するが編集状態にはしない
+            if index.isValid():
+                self.selectRow(index.row())
+            event.accept()
+            return
+        
+        # 通常のセルクリックは元の処理
+        super().mousePressEvent(event)
 
     def keyPressEvent(self, event):
         # スマートナビゲーション有効時のEnterキー処理
@@ -228,10 +327,15 @@ class ScrollableFocusControllingTableView(QTableView):
         
         # SKU削除のDeleteキー処理
         if event.key() == Qt.Key_Delete:
-            if self.product_app_ref and hasattr(self.product_app_ref, 'delete_selected_skus'):
-                self.product_app_ref.delete_selected_skus()
-                event.accept()
-                return
+            # フォーカスがあるウィジェットがエディタでない場合のみ行削除実行
+            focused_widget = QApplication.focusWidget()
+            if (not focused_widget or 
+                not isinstance(focused_widget, (QLineEdit, QTextEdit, QPlainTextEdit))):
+                
+                if self.product_app_ref and hasattr(self.product_app_ref, 'delete_selected_skus'):
+                    self.product_app_ref.delete_selected_skus()
+                    event.accept()
+                    return
         super().keyPressEvent(event)
 
 
@@ -957,3 +1061,17 @@ class JapaneseSimpleIMELineEdit(JapaneseLineEdit):
             self.setProperty("ime_preedit_length", len(preedit_str))
         else:
             self.setProperty("ime_preedit_length", 0)
+
+
+class SearchLineEdit(JapaneseLineEdit):
+    """検索用のラインエディット（ESCキー対応）"""
+    
+    def keyPressEvent(self, event):
+        if event.key() == Qt.Key_Escape:
+            # 親のSearchPanelを直接閉じる
+            search_panel = self.parent()
+            if hasattr(search_panel, 'close_panel'):
+                search_panel.close_panel()
+            event.accept()
+            return
+        super().keyPressEvent(event)

@@ -72,8 +72,14 @@ def normalize_text(text: Optional[Union[str, int, float]]) -> str:
         return ""
     text_str = str(text)  # 数値なども文字列として扱えるように
     text_str = unicodedata.normalize('NFKC', text_str).upper()
-    # ひらがなをカタカナに変換
-    return ''.join(chr(ord(ch) + 0x60) if 'ぁ' <= ch <= 'ん' else ch for ch in text_str)
+    # ひらがなをカタカナに変換（効率的な変換）
+    hiragana_to_katakana = str.maketrans(
+        'あいうえおかきくけこさしすせそたちつてとなにぬねのはひふへほまみむめもやゆよらりるれろわをん'
+        'ぁぃぅぇぉゃゅょっ',
+        'アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワヲン'
+        'ァィゥェォャュョッ'
+    )
+    return text_str.translate(hiragana_to_katakana)
 
 
 @functools.lru_cache(maxsize=500)

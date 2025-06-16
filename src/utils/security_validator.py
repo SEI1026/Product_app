@@ -19,11 +19,16 @@ class SecurityValidator:
             r'<script[^>]*>.*?</script>',
             r'javascript:',
             r'vbscript:',
+            r'data:',  # データURL
             r'on\w+\s*=',
             r'expression\s*\(',
             r'eval\s*\(',
             r'setTimeout\s*\(',
             r'setInterval\s*\(',
+            r'<svg[^>]*>.*?</svg>',  # SVG XSS
+            r'<object[^>]*>.*?</object>',
+            r'<embed[^>]*>',
+            r'<iframe[^>]*>.*?</iframe>',
         ]
         self.sql_injection_patterns = [
             r'(\bOR\b|\bAND\b)\s+\d+\s*=\s*\d+',
@@ -35,6 +40,8 @@ class SecurityValidator:
             r';\s*--',
             r'/\*.*?\*/',
         ]
+        # CSVインジェクション対策用パターン
+        self.csv_formula_chars = ['=', '+', '-', '@', '\t', '\r']
     
     def validate_input(self, value: Any) -> str:
         """入力値の総合的な検証とサニタイゼーション"""
@@ -69,6 +76,27 @@ class SecurityValidator:
         
         return sanitized.strip()
     
+    def validate_csv_input(self, value: Any) -> str:
+        """CSV入力値の検証（CSVインジェクション対策）"""
+        if value is None:
+            return ""
+        
+        text_value = str(value).strip()
+        
+        # 空文字列の場合はそのまま返す
+        if not text_value:
+            return text_value
+        
+        # CSVフォーミュラ文字で始まる場合はエスケープ
+        if text_value[0] in self.csv_formula_chars:
+            logging.warning(f"CSVインジェクション可能性のある入力を検出: {text_value[:20]}...")
+            # シングルクォートでエスケープ
+            escaped_value = "'" + text_value
+            return self.validate_input(escaped_value)
+        
+        # 通常の入力検証を適用
+        return self.validate_input(text_value)
+    
     def validate_file_path(self, filepath: str, allowed_dirs: List[str] = None) -> str:
         """ファイルパスの検証"""
         if not filepath:
@@ -94,6 +122,36 @@ class SecurityValidator:
                 raise ValueError(f"許可されていないディレクトリへのアクセス: {filepath}")
         
         return abs_path
+    
+    def validate_file_type(self, filepath: str, allowed_extensions: List[str] = None, allowed_mime_types: List[str] = None) -> bool:
+        """ファイルタイプの検証（拡張子とMIMEタイプ）"""
+        if not os.path.exists(filepath):
+            raise ValueError(f"ファイルが存在しません: {filepath}")
+        
+        # 拡張子チェック
+        if allowed_extensions:
+            file_ext = os.path.splitext(filepath)[1].lower()
+            if file_ext not in [ext.lower() for ext in allowed_extensions]:
+                logging.warning(f"許可されていない拡張子: {file_ext}, ファイル: {filepath}")
+                return False
+        
+        # MIMEタイプチェック（利用可能な場合）
+        if allowed_mime_types:
+            try:
+                # python-magicライブラリが利用可能な場合
+                import magic
+                mime_type = magic.from_file(filepath, mime=True)
+                if mime_type not in allowed_mime_types:
+                    logging.warning(f"許可されていないMIMEタイプ: {mime_type}, ファイル: {filepath}")
+                    return False
+            except ImportError:
+                # python-magicが利用できない場合は拡張子のみでチェック
+                logging.info("python-magicライブラリが利用できません。拡張子のみでファイルタイプを検証します。")
+            except Exception as e:
+                logging.error(f"MIMEタイプ検証エラー: {e}")
+                return False
+        
+        return True
     
     def validate_url(self, url: str) -> bool:
         """URL の検証"""

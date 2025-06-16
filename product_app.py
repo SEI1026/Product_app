@@ -123,7 +123,7 @@ from models import SkuTableModel
 from widgets import (
     CustomHtmlTextEdit, FocusControllingTableView, ScrollableFocusControllingTableView,
     MultipleSelectDialog, SkuMultipleAttributeEditor, SkuAttributeDelegate, LoadingDialog,
-    JapaneseLineEdit, JapaneseTextEdit, JapaneseHtmlTextEdit
+    JapaneseLineEdit, JapaneseTextEdit, JapaneseHtmlTextEdit, SearchLineEdit
 )
 from loaders import (
     YSpecDefinitionLoader, RakutenAttributeDefinitionLoader,
@@ -181,17 +181,7 @@ class SearchPanel(QWidget):
         search_label = QLabel("検索:")
         search_label.setMinimumWidth(60)
         search_layout.addWidget(search_label)
-        # カスタムQLineEditでESCキー処理
-        class SearchLineEdit(JapaneseLineEdit):
-            def keyPressEvent(self, event):
-                if event.key() == Qt.Key_Escape:
-                    # 親のSearchPanelを直接閉じる
-                    search_panel = self.parent()
-                    if hasattr(search_panel, 'close_panel'):
-                        search_panel.close_panel()
-                    event.accept()
-                    return
-                super().keyPressEvent(event)
+        # ESCキー処理対応の検索ライン
         
         self.search_input = SearchLineEdit()
         self.search_input.setPlaceholderText("検索したいテキストを入力")
@@ -2644,6 +2634,8 @@ class ProductApp(QWidget):
         self.product_list.setObjectName("ProductList")
         self.product_list.setContextMenuPolicy(Qt.CustomContextMenu)
         self.product_list.setSelectionMode(QAbstractItemView.ExtendedSelection)  # 複数選択を有効化
+        # 商品リスト用のキーイベント処理
+        self.product_list.keyPressEvent = self._product_list_key_press_event
         
         # カテゴリ選択ボタン
         self.category_select_btn = QPushButton("カテゴリ選択")
@@ -4724,7 +4716,7 @@ class ProductApp(QWidget):
             exist_nums = [int(s.get(HEADER_SKU_CODE,"")[-3:]) for s in self.sku_data_list if s.get(HEADER_SKU_CODE,"").startswith(base_mycode) and len(s.get(HEADER_SKU_CODE,""))==len(base_mycode)+3 and s.get(HEADER_SKU_CODE,"")[-3:].isdigit()]
             next_n = SKU_CODE_SUFFIX_INCREMENT
             loop_count = 0
-            max_iterations = (SKU_CODE_SUFFIX_MAX - SKU_CODE_SUFFIX_INITIAL) // max(1, SKU_CODE_SUFFIX_INCREMENT) + 1
+            max_iterations = (SKU_CODE_SUFFIX_MAX - int(SKU_CODE_SUFFIX_INITIAL)) // max(1, SKU_CODE_SUFFIX_INCREMENT) + 1
             while next_n in exist_nums and next_n <= SKU_CODE_SUFFIX_MAX and loop_count < max_iterations: 
                 next_n += SKU_CODE_SUFFIX_INCREMENT
                 loop_count += 1
@@ -4742,13 +4734,33 @@ class ProductApp(QWidget):
         self.show_sku_table(); self.mark_dirty()
 
     def delete_selected_skus(self):
-        sel_model = self.frozen_table_view.selectionModel()
-        if not sel_model or not sel_model.hasSelection(): QMessageBox.information(self, "SKU削除", "削除するSKUを選択"); return
-        sel_rows = sel_model.selectedRows()
-        if not sel_rows: QMessageBox.information(self, "SKU削除", "削除するSKUの行を選択"); return
-        if QMessageBox.question(self,"SKU削除確認",f"{len(sel_rows)}件削除しますか？",QMessageBox.Yes|QMessageBox.No,QMessageBox.No) == QMessageBox.No: return
+        # 両方のテーブルビューの選択状態をチェック
+        frozen_sel_model = self.frozen_table_view.selectionModel()
+        scrollable_sel_model = self.scrollable_table_view.selectionModel()
+        
+        frozen_rows = []
+        scrollable_rows = []
+        
+        if frozen_sel_model and frozen_sel_model.hasSelection():
+            frozen_rows = frozen_sel_model.selectedRows()
+        
+        if scrollable_sel_model and scrollable_sel_model.hasSelection():
+            scrollable_rows = scrollable_sel_model.selectedRows()
+        
+        # どちらかのテーブルで選択されている行を使用
+        sel_rows = frozen_rows if frozen_rows else scrollable_rows
+        
+        if not sel_rows: 
+            QMessageBox.information(self, "SKU削除", "削除するSKUの行を選択"); 
+            return
+            
+        if QMessageBox.question(self,"SKU削除確認",f"{len(sel_rows)}件削除しますか？",QMessageBox.Yes|QMessageBox.No,QMessageBox.Yes) == QMessageBox.No: 
+            return
+        
         for r_idx in sorted([idx.row() for idx in sel_rows], reverse=True):
-            if 0 <= r_idx < len(self.sku_data_list): del self.sku_data_list[r_idx]
+            if 0 <= r_idx < len(self.sku_data_list): 
+                del self.sku_data_list[r_idx]
+        
         self.show_sku_table(); self.mark_dirty()
 
     def synchronize_selection(self, source_view, target_view, qitem_selection_selected):
@@ -6602,11 +6614,21 @@ class ProductApp(QWidget):
     def _setup_delete_action(self):
         """商品リストでDeleteキーが押されたときのアクションを設定する"""
         self._delete_product_action_ref = QAction("選択商品を削除", self)
-        self._delete_product_action_ref.setShortcut(Qt.Key_Delete) # Deleteキーをショートカットに設定
+        # グローバルショートカットは設定しない（SKUテーブルと競合するため）
+        # self._delete_product_action_ref.setShortcut(Qt.Key_Delete) 
         self._delete_product_action_ref.triggered.connect(self._handle_delete_product_action)
         self.product_list.addAction(self._delete_product_action_ref)
         self._delete_product_action_ref.setEnabled(False) # 初期状態では無効
 
+    def _product_list_key_press_event(self, event):
+        """商品リスト専用のキーイベント処理"""
+        if event.key() == Qt.Key_Delete:
+            self._handle_delete_product_action()
+            event.accept()
+        else:
+            # その他のキーは標準処理
+            QListWidget.keyPressEvent(self.product_list, event)
+    
     def _handle_delete_product_action(self):
         """Deleteキーによる商品削除アクションを処理する"""
         current_item = self.product_list.currentItem()
