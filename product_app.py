@@ -2156,8 +2156,8 @@ class ProductApp(QWidget):
         """アプリケーションのログ設定を行う"""
         self.log_file_path = os.path.join(get_user_data_dir(), f"{APP_NAME}_errors.log") # ログファイルパスをインスタンス変数に
         
-        # ルートロガーのレベルを設定 (DEBUG以上を全てキャッチ)
-        logging.basicConfig(level=logging.DEBUG,
+        # ルートロガーのレベルを設定 (INFO以上を全てキャッチ)
+        logging.basicConfig(level=logging.INFO,
                             format='%(asctime)s - %(levelname)s - %(module)s - %(funcName)s - %(lineno)d - %(message)s',
                             datefmt='%Y-%m-%d %H:%M:%S',
                             handlers=[
@@ -2165,6 +2165,8 @@ class ProductApp(QWidget):
                                 # logging.StreamHandler() # コンソールにも出力する場合はアンコメント
                             ])
         logging.info(f"{APP_NAME} を起動しました。ログファイル: {self.log_file_path}")
+        # ログファイルパスを出力（開発・exe両環境）
+        print(f"LOG FILE: {self.log_file_path}")  # コンソールに出力
     def handle_csv_generation_button_click(self):
         # C#ツールが期待する item.xlsm のフルパス
         item_xlsm_for_csharp_path = self.output_file_path # _init_paths_and_dirs で設定済み
@@ -2954,7 +2956,7 @@ class ProductApp(QWidget):
             self._setup_button_focus_policies()
                         
         except Exception as e:
-            logging.error(f"Smart navigation setup error: {e}", exc_info=True)
+            pass
     
     def _cleanup_event_filters(self):
         """イベントフィルターをクリーンアップしてメモリリークを防ぐ"""
@@ -2984,12 +2986,7 @@ class ProductApp(QWidget):
     def _setup_product_size_navigation(self):
         """商品サイズの寸法・重量フィールドにスマートナビゲーションを設定"""
         try:
-            # exe環境でのデバッグ用
-            if getattr(sys, 'frozen', False):
-                logging.info(f"EXE: Setting up product size navigation")
             if not hasattr(self, 'expandable_field_group_instances'):
-                if getattr(sys, 'frozen', False):
-                    logging.info(f"EXE: No expandable_field_group_instances")
                 return
             
             for group in self.expandable_field_group_instances.values():
@@ -3029,15 +3026,14 @@ class ProductApp(QWidget):
                 pass  # 商品サイズグループが見つからない場合
                     
         except Exception as e:
-            logging.error(f"Product size navigation setup error: {e}", exc_info=True)
+            pass
     
     def _setup_product_size_navigation_retry(self):
         """exe環境での商品サイズナビゲーション再セットアップ"""
         try:
-            logging.info(f"EXE: Retrying product size navigation setup")
             self._setup_product_size_navigation()
         except Exception as e:
-            logging.error(f"Product size navigation retry error: {e}", exc_info=True)
+            pass
     
     def _setup_dimension_field_navigation(self, field, row_idx, field_type):
         """寸法フィールドにナビゲーション処理を設定"""
@@ -3046,9 +3042,6 @@ class ProductApp(QWidget):
         original_keyPressEvent = field.keyPressEvent
         
         def dimension_keyPressEvent(event):
-            # exe環境でのデバッグ用
-            if getattr(sys, 'frozen', False):
-                logging.info(f"EXE: Dimension key press - smart_nav enabled: {getattr(self, 'smart_navigation_enabled', False)}")
             if hasattr(self, 'smart_navigation_enabled') and self.smart_navigation_enabled:
                 if event.key() == Qt.Key_Return and not (event.modifiers() & (Qt.ShiftModifier | Qt.ControlModifier)):
                     # Enterキーでの移動
@@ -3130,7 +3123,7 @@ class ProductApp(QWidget):
             else:
                 pass  # 商品サイズグループが見つからない
         except Exception as e:
-            logging.error(f"Dimension navigation error: {e}", exc_info=True)
+            pass
     
     def _handle_dimension_backtab_navigation(self, row_idx, current_field):
         """寸法フィールド間の逆方向ナビゲーション処理"""
@@ -3153,7 +3146,7 @@ class ProductApp(QWidget):
                             self._navigate_to_field(prev_field_name)
                     break
         except Exception as e:
-            logging.error(f"Dimension backtab navigation error: {e}")
+            pass
     
     def _navigate_to_field(self, field_name):
         """指定されたフィールドに移動"""
@@ -3263,7 +3256,7 @@ class ProductApp(QWidget):
                         self._event_filters.append((editor, filter_obj))
                         
         except Exception as e:
-            logging.error(f"Y_spec navigation setup error: {e}")
+            pass
     
     def _setup_button_focus_policies(self):
         """ボタンのフォーカスポリシーを設定してTabキーナビゲーションから除外"""
@@ -3463,7 +3456,7 @@ class ProductApp(QWidget):
             self._move_to_sku_table()
                         
         except Exception as e:
-            logging.error(f"Enter navigation error: {e}")
+            pass
     
     def _ensure_field_visible(self, widget):
         """フィールドが見えるようにスクロール領域を調整"""
@@ -3583,7 +3576,7 @@ class ProductApp(QWidget):
             self._move_to_sku_table_last()
                         
         except Exception as e:
-            logging.error(f"Backtab navigation error: {e}")
+            pass
     
     def _move_to_sku_table(self):
         """SKUテーブルの最初のセルに移動"""
@@ -3645,7 +3638,7 @@ class ProductApp(QWidget):
             pass
                 
         except Exception as e:
-            logging.error(f"SKU table navigation setup error: {e}")
+            pass
     
     def _setup_global_tab_filter(self):
         """アプリケーションレベルでTabキーイベントを捕捉"""
@@ -3818,7 +3811,7 @@ class ProductApp(QWidget):
                 return
                 
         except Exception as e:
-            logging.error(f"SKU Enter navigation error: {e}")
+            pass
             event.ignore()
     
     def _sync_table_scroll(self, target_row):
@@ -3979,7 +3972,7 @@ class ProductApp(QWidget):
             event.accept()
                 
         except Exception as e:
-            logging.error(f"SKU Backtab navigation error: {e}")
+            pass
             event.ignore()
 
     def _setup_main_layout(self, main_layout_ref):
