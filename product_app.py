@@ -6976,7 +6976,14 @@ class ProductApp(QWidget):
         item_to_load = None
         for i in range(self.product_list.count()):
             list_item = self.product_list.item(i)
-            if list_item.text().startswith(orig_code + " - "):
+            item_txt = list_item.text()
+            # プレフィックスを考慮して商品コードを抽出して比較
+            if item_txt.startswith('['):
+                extracted_code = item_txt.split('] ')[1].split(" - ")[0].strip()
+            else:
+                extracted_code = item_txt.split(" - ")[0].strip()
+            
+            if extracted_code == orig_code:
                 item_to_load = list_item
                 break
         if not item_to_load:
