@@ -2893,27 +2893,27 @@ class ProductApp(QWidget):
                             def create_smart_keypress(original_func, widget_ref, field_name_ref):
                                 def smart_keyPressEvent(event):
                                     if hasattr(self, 'smart_navigation_enabled') and self.smart_navigation_enabled:
-                                        # Enterキーの処理
-                                        if (event.key() == Qt.Key_Return and
-                                            not (event.modifiers() & (Qt.ShiftModifier | Qt.ControlModifier))):  # Shift+Enter, Ctrl+Enterは除外
-                                            self._handle_enter_navigation(widget_ref, field_name_ref)
-                                            event.accept()
-                                        # Tabキーの処理
-                                        elif event.key() == Qt.Key_Tab and not event.modifiers():
-                                            # Tabキーも同じナビゲーション処理を使用
-                                            self._handle_enter_navigation(widget_ref, field_name_ref)
-                                            event.accept()
+                                        # EnterキーまたはTabキーでの移動処理を統一
+                                        if ((event.key() == Qt.Key_Return and not (event.modifiers() & (Qt.ShiftModifier | Qt.ControlModifier))) or
+                                            (event.key() == Qt.Key_Tab and not event.modifiers())):
+                                            # 両方のキーで同じ処理を実行
+                                            try:
+                                                self._handle_enter_navigation(widget_ref, field_name_ref)
+                                                event.accept()
+                                                return
+                                            except Exception:
+                                                pass
                                         # Shift+Tabキーの処理
                                         elif event.key() == Qt.Key_Backtab:
-                                            # 逆方向のナビゲーション
-                                            self._handle_backtab_navigation(widget_ref, field_name_ref)
-                                            event.accept()
-                                        else:
-                                            # その他のキー処理
-                                            original_func(event)
-                                    else:
-                                        # 通常のキー処理
-                                        original_func(event)
+                                            try:
+                                                self._handle_backtab_navigation(widget_ref, field_name_ref)
+                                                event.accept()
+                                                return
+                                            except Exception:
+                                                pass
+                                    
+                                    # その他のキーまたはナビゲーションが無効な場合
+                                    original_func(event)
                                 return smart_keyPressEvent
                             
                             # 新しいkeyPressEventを設定
@@ -3043,22 +3043,27 @@ class ProductApp(QWidget):
         
         def dimension_keyPressEvent(event):
             if hasattr(self, 'smart_navigation_enabled') and self.smart_navigation_enabled:
-                if event.key() == Qt.Key_Return and not (event.modifiers() & (Qt.ShiftModifier | Qt.ControlModifier)):
-                    # Enterキーでの移動
-                    self._handle_dimension_navigation(row_idx, field_type)
-                    event.accept()
-                elif event.key() == Qt.Key_Tab and not event.modifiers():
-                    # Tabキーでの移動
-                    self._handle_dimension_navigation(row_idx, field_type)
-                    event.accept()
+                # EnterキーまたはTabキーでの移動処理を統一
+                if ((event.key() == Qt.Key_Return and not (event.modifiers() & (Qt.ShiftModifier | Qt.ControlModifier))) or
+                    (event.key() == Qt.Key_Tab and not event.modifiers())):
+                    # 両方のキーで同じ処理を実行
+                    try:
+                        self._handle_dimension_navigation(row_idx, field_type)
+                        event.accept()
+                        return
+                    except Exception:
+                        pass
                 elif event.key() == Qt.Key_Backtab:
                     # Shift+Tabキーでの逆方向移動
-                    self._handle_dimension_backtab_navigation(row_idx, field_type)
-                    event.accept()
-                else:
-                    original_keyPressEvent(event)
-            else:
-                original_keyPressEvent(event)
+                    try:
+                        self._handle_dimension_backtab_navigation(row_idx, field_type)
+                        event.accept()
+                        return
+                    except Exception:
+                        pass
+            
+            # その他のキーまたはナビゲーションが無効な場合
+            original_keyPressEvent(event)
         
         field.keyPressEvent = dimension_keyPressEvent
     
@@ -3071,25 +3076,29 @@ class ProductApp(QWidget):
         
         def weight_keyPressEvent(event):
             if hasattr(self, 'smart_navigation_enabled') and self.smart_navigation_enabled:
-                if event.key() == Qt.Key_Return and not (event.modifiers() & (Qt.ShiftModifier | Qt.ControlModifier)):
-                    # Enterキーでの移動 - 通常のナビゲーション処理を使用
-                    current_field_name = f"商品サイズ_{row_idx+1}b"
-                    self._handle_enter_navigation(None, current_field_name)
-                    event.accept()
-                elif event.key() == Qt.Key_Tab and not event.modifiers():
-                    # Tabキーでの移動 - 通常のナビゲーション処理を使用
-                    current_field_name = f"商品サイズ_{row_idx+1}b"
-                    self._handle_enter_navigation(None, current_field_name)
-                    event.accept()
+                # EnterキーまたはTabキーでの移動処理を統一
+                if ((event.key() == Qt.Key_Return and not (event.modifiers() & (Qt.ShiftModifier | Qt.ControlModifier))) or
+                    (event.key() == Qt.Key_Tab and not event.modifiers())):
+                    # 両方のキーで同じ処理を実行
+                    try:
+                        current_field_name = f"商品サイズ_{row_idx+1}b"
+                        self._handle_enter_navigation(None, current_field_name)
+                        event.accept()
+                        return
+                    except Exception:
+                        pass
                 elif event.key() == Qt.Key_Backtab:
-                    # Shift+Tabキーでの逆方向移動 - aフィールドへ
-                    prev_field_name = f"商品サイズ_{row_idx+1}a"
-                    self._navigate_to_field(prev_field_name)
-                    event.accept()
-                else:
-                    original_keyPressEvent(event)
-            else:
-                original_keyPressEvent(event)
+                    # Shift+Tabキーでの逆方向移動
+                    try:
+                        prev_field_name = f"商品サイズ_{row_idx+1}a"
+                        self._navigate_to_field(prev_field_name)
+                        event.accept()
+                        return
+                    except Exception:
+                        pass
+            
+            # その他のキーまたはナビゲーションが無効な場合
+            original_keyPressEvent(event)
         
         field.keyPressEvent = weight_keyPressEvent
     
@@ -3172,20 +3181,26 @@ class ProductApp(QWidget):
                         def create_yspec_keypress(original_func, editor_ref, field_name_ref):
                             def yspec_keyPressEvent(event):
                                 if hasattr(self, 'smart_navigation_enabled') and self.smart_navigation_enabled:
-                                    if (event.key() == Qt.Key_Return and
-                                        not (event.modifiers() & Qt.ShiftModifier)):
-                                        self._handle_enter_navigation(editor_ref, field_name_ref)
-                                        event.accept()
-                                    elif event.key() == Qt.Key_Tab and not event.modifiers():
-                                        self._handle_enter_navigation(editor_ref, field_name_ref)
-                                        event.accept()
+                                    # EnterキーまたはTabキーでの移動処理を統一
+                                    if ((event.key() == Qt.Key_Return and not (event.modifiers() & Qt.ShiftModifier)) or
+                                        (event.key() == Qt.Key_Tab and not event.modifiers())):
+                                        # 両方のキーで同じ処理を実行
+                                        try:
+                                            self._handle_enter_navigation(editor_ref, field_name_ref)
+                                            event.accept()
+                                            return
+                                        except Exception:
+                                            pass
                                     elif event.key() == Qt.Key_Backtab:
-                                        self._handle_backtab_navigation(editor_ref, field_name_ref)
-                                        event.accept()
-                                    else:
-                                        original_func(event)
-                                else:
-                                    original_func(event)
+                                        try:
+                                            self._handle_backtab_navigation(editor_ref, field_name_ref)
+                                            event.accept()
+                                            return
+                                        except Exception:
+                                            pass
+                                
+                                # その他のキーまたはナビゲーションが無効な場合
+                                original_func(event)
                             return yspec_keyPressEvent
                         
                         # 新しいkeyPressEventを設定
