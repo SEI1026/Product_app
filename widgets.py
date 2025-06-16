@@ -139,10 +139,13 @@ class FocusControllingTableView(QTableView):
         # フラグをリセット（遅延実行）
         QTimer.singleShot(100, lambda: setattr(self, '_row_header_clicked', False))
     
-    def edit(self, index, trigger, event):
+    def edit(self, index, trigger=None, event=None):
         """編集開始をコントロール - 行ヘッダークリック時は編集しない"""
         if self._row_header_clicked:
             return False
+        # 引数の数に応じて適切に呼び出す
+        if trigger is None and event is None:
+            return super().edit(index)
         return super().edit(index, trigger, event)
     
     def mousePressEvent(self, event):
@@ -285,10 +288,13 @@ class ScrollableFocusControllingTableView(QTableView):
         # フラグをリセット（遅延実行）
         QTimer.singleShot(100, lambda: setattr(self, '_row_header_clicked', False))
     
-    def edit(self, index, trigger, event):
+    def edit(self, index, trigger=None, event=None):
         """編集開始をコントロール - 行ヘッダークリック時は編集しない"""
         if self._row_header_clicked:
             return False
+        # 引数の数に応じて適切に呼び出す
+        if trigger is None and event is None:
+            return super().edit(index)
         return super().edit(index, trigger, event)
     
     def mousePressEvent(self, event):

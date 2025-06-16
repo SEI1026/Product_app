@@ -1076,7 +1076,7 @@ class ExpandableFieldGroup(QWidget):
                             edit_widget.textChanged.connect(lambda text, r_idx=i-1: self._update_b_field_from_dimensions(r_idx))
                         dim_layout.addWidget(w_edit, 1); dim_layout.addWidget(QLabel("×"), 0); dim_layout.addWidget(d_edit, 1)
                         dim_layout.addWidget(QLabel("×"), 0); dim_layout.addWidget(h_edit, 1); dim_layout.addWidget(QLabel("cm"), 0)
-                        self.dimension_fields_list[i-1] = {'w': w_edit, 'd': d_edit, 'h': h_edit, 'container': dim_input_container}
+                        self.dimension_fields_list[i-1] = {'width': w_edit, 'depth': d_edit, 'height': h_edit, 'container': dim_input_container}
 
                         weight_input_container = QWidget(); weight_layout = QHBoxLayout(weight_input_container)
                         weight_layout.setContentsMargins(0,0,0,0); weight_layout.setSpacing(3)
@@ -1084,7 +1084,7 @@ class ExpandableFieldGroup(QWidget):
                         weight_edit.setValidator(double_validator)
                         weight_edit.textChanged.connect(lambda text, r_idx=i-1: self._update_b_field_from_weight(r_idx))
                         weight_layout.addWidget(weight_edit, 1); weight_layout.addWidget(QLabel("kg"), 0)
-                        self.weight_fields_list[i-1] = {'weight': weight_edit, 'container': weight_input_container}
+                        self.weight_fields_list[i-1] = {'field': weight_edit, 'container': weight_input_container}
 
                         b_stack = QStackedWidget()
                         b_stack.addWidget(field_b_widget); b_stack.addWidget(dim_input_container); b_stack.addWidget(weight_input_container)
@@ -1188,18 +1188,18 @@ class ExpandableFieldGroup(QWidget):
         self.main_content_widget.updateGeometry()
 
     def clear_dimension_fields(self):
-        """商品サイズグループの寸法入力フィールド(w,d,h)と重量フィールドをクリアする"""
+        """商品サイズグループの寸法入力フィールド(width,depth,height)と重量フィールドをクリアする"""
         if self.group_label_prefix == "商品サイズ":
             for i in range(self.group_count):
                 if self.dimension_fields_list[i]:
-                    self.dimension_fields_list[i]['w'].clear()
-                    self.dimension_fields_list[i]['d'].clear()
-                    self.dimension_fields_list[i]['h'].clear()
+                    self.dimension_fields_list[i]['width'].clear()
+                    self.dimension_fields_list[i]['depth'].clear()
+                    self.dimension_fields_list[i]['height'].clear()
                     # _update_b_field_from_dimensions を呼び出して、対応する 'b' フィールドも更新
                     # self._update_b_field_from_dimensions(i) # clear_fields の中で b フィールドもクリアされるので不要かも
 
                 if self.weight_fields_list[i]:
-                    self.weight_fields_list[i]['weight'].clear()
+                    self.weight_fields_list[i]['field'].clear()
                     # self._update_b_field_from_weight(i) # 同上
 
                 # 'b' フィールド (QLineEdit本体) もクリア
@@ -1261,7 +1261,7 @@ class ExpandableFieldGroup(QWidget):
             self._processing_a_change = False
 
     def _parse_and_set_dimensions(self, text_b, dim_data):
-        w_edit, d_edit, h_edit = dim_data['w'], dim_data['d'], dim_data['h']
+        w_edit, d_edit, h_edit = dim_data['width'], dim_data['depth'], dim_data['height']
         
         # ブロックして、setTextが循環トリガーしないようにする
         for edit in [w_edit, d_edit, h_edit]: edit.blockSignals(True)
@@ -1286,9 +1286,9 @@ class ExpandableFieldGroup(QWidget):
         for edit in [w_edit, d_edit, h_edit]: edit.blockSignals(False)
 
     def _format_and_set_b_field(self, dim_data, b_line_edit, called_from_a_change=False):
-        w = dim_data['w'].text().strip()
-        d = dim_data['d'].text().strip()
-        h = dim_data['h'].text().strip()
+        w = dim_data['width'].text().strip()
+        d = dim_data['depth'].text().strip()
+        h = dim_data['height'].text().strip()
 
         new_text_b = ""
         if w and d and h: #  and all are numeric-like (validator should handle this)
@@ -1335,7 +1335,7 @@ class ExpandableFieldGroup(QWidget):
         # ProductApp.mark_dirty は b_line_edit.textChanged によって既に接続されている。
 
     def _parse_and_set_weight(self, text_b, weight_data):
-        weight_edit = weight_data['weight']
+        weight_edit = weight_data['field']
         weight_edit.blockSignals(True)
 
         # "約〇〇kg", "〇〇kg", "約 〇〇 kg", "〇〇 kg" のような形式から数値を抽出
@@ -1353,7 +1353,7 @@ class ExpandableFieldGroup(QWidget):
         weight_edit.blockSignals(False)
 
     def _format_and_set_b_field_from_weight(self, weight_data, b_line_edit, called_from_a_change=False):
-        weight_val_str = weight_data['weight'].text().strip()
+        weight_val_str = weight_data['field'].text().strip()
         new_text_b = ""
         if weight_val_str: # and is numeric-like (validator should handle this)
             new_text_b = f"約{weight_val_str}kg" # 「約」を付加
@@ -1746,7 +1746,7 @@ class ProductApp(QWidget):
                 fld.addItems(["", "完成品", "組立必要品", "完成品(脚部取付必要)", "完成品(上下重ね合わせ必要)"])
             elif name in HTML_TEXTEDIT_FIELDS:
                 fld = CustomHtmlTextEdit() # カスタムクラスを使用
-                fld.setPlaceholderText("HTMLタグ使用可。改行＝<br>")
+                fld.setPlaceholderText("HTMLタグ使用可。改行＝Shift+Enter / Ctrl+Enter（またはHTMLの<br>タグ）")
             else:
                 # "色_1" の特別処理のために、ここで fld を確定させる前に name をチェック
                 if name == "色_1":
@@ -2893,7 +2893,7 @@ class ProductApp(QWidget):
                                     if hasattr(self, 'smart_navigation_enabled') and self.smart_navigation_enabled:
                                         # Enterキーの処理
                                         if (event.key() == Qt.Key_Return and
-                                            not (event.modifiers() & Qt.ShiftModifier)):  # Shift+Enterは除外
+                                            not (event.modifiers() & (Qt.ShiftModifier | Qt.ControlModifier))):  # Shift+Enter, Ctrl+Enterは除外
                                             self._handle_enter_navigation(widget_ref, field_name_ref)
                                             event.accept()
                                         # Tabキーの処理
@@ -2942,6 +2942,9 @@ class ProductApp(QWidget):
             
             # Y_specエディタにも同じナビゲーション処理を追加
             self._setup_yspec_navigation()
+            
+            # 商品サイズの寸法・重量フィールドにもナビゲーション処理を追加
+            self._setup_product_size_navigation()
                         
             # ボタンのフォーカスポリシーを設定（Tabキーでフォーカスを受けないように）
             self._setup_button_focus_policies()
@@ -2973,6 +2976,174 @@ class ProductApp(QWidget):
                 except Exception as e:
                     logging.debug(f"イベントフィルター削除エラー（継続）: {e}")
             self._event_filters.clear()
+    
+    def _setup_product_size_navigation(self):
+        """商品サイズの寸法・重量フィールドにスマートナビゲーションを設定"""
+        try:
+            if not hasattr(self, 'expandable_field_group_instances'):
+                return
+            
+            for group in self.expandable_field_group_instances.values():
+                if hasattr(group, 'group_label_prefix') and group.group_label_prefix == "商品サイズ":
+                    # 寸法フィールドの設定
+                    if hasattr(group, 'dimension_fields_list'):
+                        # DEBUG: removed - print(f"DEBUG: dimension_fields_list has {len(group.dimension_fields_list)} items")
+                        for i, dim_data in enumerate(group.dimension_fields_list):
+                            if dim_data and isinstance(dim_data, dict):
+                                # DEBUG: removed - print(f"DEBUG: Setting up dimension fields for row {i}, keys: {list(dim_data.keys())}")
+                                # 幅フィールド
+                                if 'width' in dim_data and dim_data['width']:
+                                    # DEBUG: removed - print(f"DEBUG: Setting up width field for row {i}")
+                                    self._setup_dimension_field_navigation(dim_data['width'], i, 'width')
+                                # 奥行フィールド
+                                if 'depth' in dim_data and dim_data['depth']:
+                                    # DEBUG: removed - print(f"DEBUG: Setting up depth field for row {i}")
+                                    self._setup_dimension_field_navigation(dim_data['depth'], i, 'depth')
+                                # 高さフィールド
+                                if 'height' in dim_data and dim_data['height']:
+                                    # DEBUG: removed - print(f"DEBUG: Setting up height field for row {i}")
+                                    self._setup_dimension_field_navigation(dim_data['height'], i, 'height')
+                    else:
+                        pass  # dimension_fields_list が存在しない場合
+                    
+                    # 重量フィールドの設定
+                    if hasattr(group, 'weight_fields_list'):
+                        # DEBUG: removed - print(f"DEBUG: weight_fields_list has {len(group.weight_fields_list)} items")
+                        for i, weight_data in enumerate(group.weight_fields_list):
+                            if weight_data and isinstance(weight_data, dict) and 'field' in weight_data and weight_data['field']:
+                                # DEBUG: removed - print(f"DEBUG: Setting up weight field for row {i}")
+                                self._setup_weight_field_navigation(weight_data['field'], i)
+                    else:
+                        pass  # weight_fields_list が存在しない場合
+                    break
+            else:
+                pass  # 商品サイズグループが見つからない場合
+                    
+        except Exception as e:
+            logging.error(f"Product size navigation setup error: {e}", exc_info=True)
+    
+    def _setup_dimension_field_navigation(self, field, row_idx, field_type):
+        """寸法フィールドにナビゲーション処理を設定"""
+        if not field or not hasattr(field, 'keyPressEvent'):
+            return
+        original_keyPressEvent = field.keyPressEvent
+        
+        def dimension_keyPressEvent(event):
+            if hasattr(self, 'smart_navigation_enabled') and self.smart_navigation_enabled:
+                if event.key() == Qt.Key_Return and not (event.modifiers() & (Qt.ShiftModifier | Qt.ControlModifier)):
+                    # Enterキーでの移動
+                    self._handle_dimension_navigation(row_idx, field_type)
+                    event.accept()
+                elif event.key() == Qt.Key_Tab and not event.modifiers():
+                    # Tabキーでの移動
+                    self._handle_dimension_navigation(row_idx, field_type)
+                    event.accept()
+                elif event.key() == Qt.Key_Backtab:
+                    # Shift+Tabキーでの逆方向移動
+                    self._handle_dimension_backtab_navigation(row_idx, field_type)
+                    event.accept()
+                else:
+                    original_keyPressEvent(event)
+            else:
+                original_keyPressEvent(event)
+        
+        field.keyPressEvent = dimension_keyPressEvent
+    
+    def _setup_weight_field_navigation(self, field, row_idx):
+        """重量フィールドにナビゲーション処理を設定"""
+        if not field or not hasattr(field, 'keyPressEvent'):
+            return
+            
+        original_keyPressEvent = field.keyPressEvent
+        
+        def weight_keyPressEvent(event):
+            if hasattr(self, 'smart_navigation_enabled') and self.smart_navigation_enabled:
+                if event.key() == Qt.Key_Return and not (event.modifiers() & (Qt.ShiftModifier | Qt.ControlModifier)):
+                    # Enterキーでの移動 - 通常のナビゲーション処理を使用
+                    current_field_name = f"商品サイズ_{row_idx+1}b"
+                    self._handle_enter_navigation(None, current_field_name)
+                    event.accept()
+                elif event.key() == Qt.Key_Tab and not event.modifiers():
+                    # Tabキーでの移動 - 通常のナビゲーション処理を使用
+                    current_field_name = f"商品サイズ_{row_idx+1}b"
+                    self._handle_enter_navigation(None, current_field_name)
+                    event.accept()
+                elif event.key() == Qt.Key_Backtab:
+                    # Shift+Tabキーでの逆方向移動 - aフィールドへ
+                    prev_field_name = f"商品サイズ_{row_idx+1}a"
+                    self._navigate_to_field(prev_field_name)
+                    event.accept()
+                else:
+                    original_keyPressEvent(event)
+            else:
+                original_keyPressEvent(event)
+        
+        field.keyPressEvent = weight_keyPressEvent
+    
+    def _handle_dimension_navigation(self, row_idx, current_field):
+        """寸法フィールド間のナビゲーション処理"""
+        try:
+            # DEBUG: removed - print(f"DEBUG: _handle_dimension_navigation called - row_idx={row_idx}, current_field={current_field}")
+            for group in self.expandable_field_group_instances.values():
+                if hasattr(group, 'group_label_prefix') and group.group_label_prefix == "商品サイズ":
+                    if hasattr(group, 'dimension_fields_list') and row_idx < len(group.dimension_fields_list):
+                        dim_data = group.dimension_fields_list[row_idx]
+                        # DEBUG: removed - print(f"DEBUG: dim_data keys: {list(dim_data.keys()) if dim_data else 'None'}")
+                        if current_field == 'width' and 'depth' in dim_data and dim_data['depth']:
+                            # 幅→奥行
+                            # DEBUG: removed - print(f"DEBUG: Moving from width to depth")
+                            dim_data['depth'].setFocus()
+                            dim_data['depth'].selectAll()
+                        elif current_field == 'depth' and 'height' in dim_data and dim_data['height']:
+                            # 奥行→高さ
+                            # DEBUG: removed - print(f"DEBUG: Moving from depth to height")
+                            dim_data['height'].setFocus()
+                            dim_data['height'].selectAll()
+                        elif current_field == 'height':
+                            # 高さ→通常のナビゲーション処理を使用
+                            # DEBUG: removed - print(f"DEBUG: Moving from height to next field via normal navigation")
+                            current_field_name = f"商品サイズ_{row_idx+1}b"
+                            self._handle_enter_navigation(None, current_field_name)
+                    else:
+                        pass  # dimension_fields_list チェックに失敗
+                    break
+            else:
+                pass  # 商品サイズグループが見つからない
+        except Exception as e:
+            logging.error(f"Dimension navigation error: {e}", exc_info=True)
+    
+    def _handle_dimension_backtab_navigation(self, row_idx, current_field):
+        """寸法フィールド間の逆方向ナビゲーション処理"""
+        try:
+            for group in self.expandable_field_group_instances.values():
+                if hasattr(group, 'group_label_prefix') and group.group_label_prefix == "商品サイズ":
+                    if hasattr(group, 'dimension_fields_list') and row_idx < len(group.dimension_fields_list):
+                        dim_data = group.dimension_fields_list[row_idx]
+                        if current_field == 'height' and 'depth' in dim_data and dim_data['depth']:
+                            # 高さ→奥行
+                            dim_data['depth'].setFocus()
+                            dim_data['depth'].selectAll()
+                        elif current_field == 'depth' and 'width' in dim_data and dim_data['width']:
+                            # 奥行→幅
+                            dim_data['width'].setFocus()
+                            dim_data['width'].selectAll()
+                        elif current_field == 'width':
+                            # 幅→前のaフィールド
+                            prev_field_name = f"商品サイズ_{row_idx+1}a"
+                            self._navigate_to_field(prev_field_name)
+                    break
+        except Exception as e:
+            logging.error(f"Dimension backtab navigation error: {e}")
+    
+    def _navigate_to_field(self, field_name):
+        """指定されたフィールドに移動"""
+        if field_name in self.main_fields and self.main_fields[field_name]:
+            widget = self.main_fields[field_name]
+            if widget.isEnabled() and widget.isVisible():
+                widget.setFocus()
+                if hasattr(widget, 'selectAll'):
+                    widget.selectAll()
+                self._ensure_field_visible(widget)
     
     def _setup_yspec_navigation(self):
         """Y_specエディタのスマートナビゲーション設定"""
@@ -3199,6 +3370,44 @@ class ProductApp(QWidget):
                 
                 # ウィジェットが見つかった場合、フォーカスを移動
                 if next_widget and hasattr(next_widget, 'setFocus'):
+                    # 商品サイズ_bフィールドのQStackedWidget対応
+                    if (next_field_name and next_field_name.startswith("商品サイズ_") and 
+                        next_field_name.endswith("b") and hasattr(self, 'expandable_field_group_instances')):
+                        # ExpandableFieldGroupを探す
+                        for group in self.expandable_field_group_instances.values():
+                            if hasattr(group, 'group_label_prefix') and group.group_label_prefix == "商品サイズ":
+                                try:
+                                    # 商品サイズ_1b -> index 0
+                                    row_idx = int(next_field_name.split("_")[1][:-1]) - 1
+                                    if (hasattr(group, 'b_field_stacks') and 
+                                        0 <= row_idx < len(group.b_field_stacks)):
+                                        stack = group.b_field_stacks[row_idx]
+                                        current_widget = stack.currentWidget()
+                                        if current_widget:
+                                            # 現在表示されているウィジェットにフォーカスを設定
+                                            if hasattr(current_widget, 'setFocus'):
+                                                current_widget.setFocus()
+                                                # 寸法入力の場合は最初のフィールドにフォーカス
+                                                if (hasattr(group, 'dimension_fields_list') and
+                                                    row_idx < len(group.dimension_fields_list)):
+                                                    dim_data = group.dimension_fields_list[row_idx]
+                                                    if current_widget == dim_data.get('container'):
+                                                        if 'width' in dim_data and dim_data['width']:
+                                                            dim_data['width'].setFocus()
+                                                # 重量入力の場合
+                                                elif (hasattr(group, 'weight_fields_list') and
+                                                      row_idx < len(group.weight_fields_list)):
+                                                    weight_data = group.weight_fields_list[row_idx]
+                                                    if current_widget == weight_data.get('container'):
+                                                        if 'field' in weight_data and weight_data['field']:
+                                                            weight_data['field'].setFocus()
+                                            next_widget.setFocus()  # フォールバック
+                                            self._ensure_field_visible(next_widget)
+                                            return
+                                except (ValueError, IndexError):
+                                    pass
+                                break
+                    
                     next_widget.setFocus()
                     
                     # Y_specエディタの場合、フォーカススタイルを強制更新
@@ -3513,7 +3722,7 @@ class ProductApp(QWidget):
                 if frozen_next_col < FROZEN_TABLE_COLUMN_COUNT and not table_view.isColumnHidden(frozen_next_col):
                     next_index = model.index(next_row, frozen_next_col)
                     table_view.setCurrentIndex(next_index)
-                    table_view.edit(next_index)
+                    table_view.setCurrentIndex(next_index)
                     event.accept()
                     return
                 else:
@@ -3531,7 +3740,7 @@ class ProductApp(QWidget):
                             next_index = model.index(current_row, scrollable_col)
                             self.scrollable_table_view.setCurrentIndex(next_index)
                             self.scrollable_table_view.setFocus()
-                            self.scrollable_table_view.edit(next_index)
+                            self.scrollable_table_view.setCurrentIndex(next_index)
                             self._sync_table_scroll(current_row)
                             event.accept()
                             return
@@ -3545,7 +3754,7 @@ class ProductApp(QWidget):
                 if next_col < model.columnCount():
                     next_index = model.index(next_row, next_col)
                     table_view.setCurrentIndex(next_index)
-                    table_view.edit(next_index)
+                    table_view.setCurrentIndex(next_index)
                     self._sync_table_scroll(next_row)
                     event.accept()
                     return
@@ -3565,21 +3774,26 @@ class ProductApp(QWidget):
                     next_index = model.index(next_row, first_visible_col)
                     self.frozen_table_view.setCurrentIndex(next_index)
                     self.frozen_table_view.setFocus()
-                    self.frozen_table_view.edit(next_index)
+                    self.frozen_table_view.setCurrentIndex(next_index)
                     # スクロールを同期
                     self._sync_table_scroll(next_row)
                     event.accept()
                     return
             
-            # テーブルの最後まで来たらメインフィールドに戻る
+            # テーブルの最後まで来たら最初の行に戻る（テーブル内で循環）
             if next_row >= model.rowCount():
-                if hasattr(self, 'main_fields') and HEADER_MEMO in self.main_fields:
-                    self.main_fields[HEADER_MEMO].setFocus()
-                    # テキストフィールドの場合、全選択
-                    if hasattr(self.main_fields[HEADER_MEMO], 'selectAll'):
-                        self.main_fields[HEADER_MEMO].selectAll()
-                    # メモ欄が見えるようにスクロール
-                    self._ensure_field_visible(self.main_fields[HEADER_MEMO])
+                # 最初の行の最初の表示列を探す
+                first_visible_col = 0
+                while (first_visible_col < FROZEN_TABLE_COLUMN_COUNT and 
+                       self.frozen_table_view.isColumnHidden(first_visible_col)):
+                    first_visible_col += 1
+                
+                if first_visible_col < FROZEN_TABLE_COLUMN_COUNT and model.rowCount() > 0:
+                    next_index = model.index(0, first_visible_col)
+                    self.frozen_table_view.setCurrentIndex(next_index)
+                    self.frozen_table_view.setFocus()
+                    self.frozen_table_view.setCurrentIndex(next_index)
+                    self._sync_table_scroll(0)
                 event.accept()
                 return
                 
@@ -3660,7 +3874,7 @@ class ProductApp(QWidget):
                 if prev_col >= FROZEN_TABLE_COLUMN_COUNT:
                     prev_index = model.index(prev_row, prev_col)
                     table_view.setCurrentIndex(prev_index)
-                    table_view.edit(prev_index)
+                    table_view.setCurrentIndex(prev_index)
                     event.accept()
                     return
                 else:
@@ -3676,7 +3890,7 @@ class ProductApp(QWidget):
                             prev_index = model.index(current_row, frozen_col)
                             self.frozen_table_view.setCurrentIndex(prev_index)
                             self.frozen_table_view.setFocus()
-                            self.frozen_table_view.edit(prev_index)
+                            self.frozen_table_view.setCurrentIndex(prev_index)
                             event.accept()
                             return
             else:
@@ -3691,7 +3905,7 @@ class ProductApp(QWidget):
                 if prev_col >= 0:
                     prev_index = model.index(prev_row, prev_col)
                     table_view.setCurrentIndex(prev_index)
-                    table_view.edit(prev_index)
+                    table_view.setCurrentIndex(prev_index)
                     event.accept()
                     return
                 
@@ -3708,27 +3922,28 @@ class ProductApp(QWidget):
                         prev_index = model.index(prev_row, last_col)
                         self.scrollable_table_view.setCurrentIndex(prev_index)
                         self.scrollable_table_view.setFocus()
-                        self.scrollable_table_view.edit(prev_index)
+                        self.scrollable_table_view.setCurrentIndex(prev_index)
                         # スクロールを同期
                         self._sync_table_scroll(prev_row)
                         event.accept()
                         return
             
-            # テーブルの最初まで来たらメインフィールドの最後に戻る
+            # テーブルの最初まで来たら最後の行の最後の列に戻る（テーブル内で循環）
             if prev_row < 0:
-                # 最後の表示されているメインフィールドを探す
-                if hasattr(self, 'main_field_order') and hasattr(self, 'main_fields'):
-                    for i in range(len(self.main_field_order) - 1, -1, -1):
-                        field_name = self.main_field_order[i]
-                        if (field_name in self.main_fields and 
-                            self.main_fields[field_name] and
-                            self.main_fields[field_name].isEnabled() and
-                            self.main_fields[field_name].isVisible()):
-                            self.main_fields[field_name].setFocus()
-                            if hasattr(self.main_fields[field_name], 'selectAll'):
-                                self.main_fields[field_name].selectAll()
-                            self._ensure_field_visible(self.main_fields[field_name])
-                            break
+                if model.rowCount() > 0:
+                    # 最後の行の最後の表示列を探す
+                    last_row = model.rowCount() - 1
+                    last_col = model.columnCount() - 1
+                    while (last_col >= 0 and 
+                           self.scrollable_table_view.isColumnHidden(last_col)):
+                        last_col -= 1
+                    
+                    if last_col >= 0:
+                        prev_index = model.index(last_row, last_col)
+                        self.scrollable_table_view.setCurrentIndex(prev_index)
+                        self.scrollable_table_view.setFocus()
+                        self.scrollable_table_view.setCurrentIndex(prev_index)
+                        self._sync_table_scroll(last_row)
                 event.accept()
                 return
             
@@ -3737,7 +3952,7 @@ class ProductApp(QWidget):
                 prev_index = model.index(prev_row, prev_col)
                 if prev_index.isValid():
                     table_view.setCurrentIndex(prev_index)
-                    table_view.edit(prev_index)
+                    table_view.setCurrentIndex(prev_index)
                     # スクロールを同期
                     self._sync_table_scroll(prev_row)
             
@@ -4611,9 +4826,9 @@ class ProductApp(QWidget):
             if main_body_row_idx != -1:
                 dim_data = product_size_efg.dimension_fields_list[main_body_row_idx]
                 if dim_data:
-                    main_body_width = dim_data['w'].text().strip()
-                    main_body_depth = dim_data['d'].text().strip()
-                    main_body_height = dim_data['h'].text().strip()
+                    main_body_width = dim_data['width'].text().strip()
+                    main_body_depth = dim_data['depth'].text().strip()
+                    main_body_height = dim_data['height'].text().strip()
                     # 全ての寸法が存在する場合のみ文字列を生成
                     if main_body_width and main_body_depth and main_body_height:
                         formatted_main_body_size_info = f"幅{main_body_width}×奥行{main_body_depth}×高さ{main_body_height}cm"
@@ -6562,7 +6777,7 @@ class ProductApp(QWidget):
                             self._update_status_bar()
                 
         except Exception as e:
-            logging.error(f"商品選択変更処理中にエラー: {e}")
+            logging.error(f"商品選択変更処理中にエラー: {e}", exc_info=True)
         finally:
             # 検索パネルが開いていて検索語が入力されている場合、検索結果を更新
             # finallyブロックで確実に実行されるようにする
@@ -8302,9 +8517,9 @@ Developed by Seito Nakamura</small></p>"""
         if not dim_data:
             return
             
-        width_val = dim_data['w'].text().strip()
-        depth_val = dim_data['d'].text().strip()
-        height_val = dim_data['h'].text().strip()
+        width_val = dim_data['width'].text().strip()
+        depth_val = dim_data['depth'].text().strip()
+        height_val = dim_data['height'].text().strip()
 
         editors_values_and_defs = [
             (self.y_spec_width_editor, width_val, self.y_spec_width_definition),
