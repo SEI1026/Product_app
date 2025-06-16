@@ -77,7 +77,7 @@ def safe_extract_zip(zip_file_path: str, extract_to: str) -> str:
     return extract_to
 
 # 現在のアプリケーションバージョン
-CURRENT_VERSION = "2.6.3"
+CURRENT_VERSION = "2.7.0"
 
 # GitHub上のversion.jsonのURL
 # 株式会社大宝家具の商品登録入力ツール
