@@ -3006,6 +3006,7 @@ class ProductApp(QWidget):
                                 if 'height' in dim_data and dim_data['height']:
                                     self._setup_dimension_field_navigation(dim_data['height'], i, 'height')
                     else:
+                        pass  # dimension_fields_list が存在しない場合
                     
                     # 重量フィールドの設定
                     if hasattr(group, 'weight_fields_list'):
@@ -3013,6 +3014,7 @@ class ProductApp(QWidget):
                             if weight_data and isinstance(weight_data, dict) and 'field' in weight_data and weight_data['field']:
                                 self._setup_weight_field_navigation(weight_data['field'], i)
                     else:
+                        pass  # weight_fields_list が存在しない場合
                     break
             else:
                 pass  # 商品サイズグループが見つからない場合
