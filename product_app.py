@@ -7981,10 +7981,21 @@ class ProductApp(QWidget):
             logging.debug("自動保存スキップ: Undo/Redo実行中")
             return
             
-        # 商品コードが空の場合は自動保存しない（新規入力画面または削除直後）
-        mycode_field = self.main_fields.get(HEADER_MYCODE)
-        if mycode_field and not mycode_field.text().strip():
-            logging.debug("自動保存スキップ: 商品コードが空です")
+        # データが全て空の場合のみ自動保存をスキップ（完全に空の状態）
+        has_data = False
+        for field_name, widget in self.main_fields.items():
+            if isinstance(widget, QLineEdit) and widget.text().strip():
+                has_data = True
+                break
+            elif isinstance(widget, QTextEdit) and widget.toPlainText().strip():
+                has_data = True
+                break
+            elif isinstance(widget, QComboBox) and widget.currentText().strip():
+                has_data = True
+                break
+        
+        if not has_data and (not hasattr(self, 'sku_data_list') or not self.sku_data_list):
+            logging.debug("自動保存スキップ: 入力データがありません")
             return
 
         # 自動保存中は表示しない（うるさくないように）
