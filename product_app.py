@@ -182,7 +182,7 @@ class SearchPanel(QWidget):
         search_label.setMinimumWidth(60)
         search_layout.addWidget(search_label)
         # カスタムQLineEditでESCキー処理
-        class SearchLineEdit(QLineEdit):
+        class SearchLineEdit(JapaneseLineEdit):
             def keyPressEvent(self, event):
                 if event.key() == Qt.Key_Escape:
                     # 親のSearchPanelを直接閉じる
@@ -1060,7 +1060,7 @@ class ExpandableFieldGroup(QWidget):
                         for name_key in sorted(self.master_data.keys()):
                             field_a_widget.addItem(name_key)
                         
-                        field_b_widget = QLineEdit()
+                        field_b_widget = JapaneseLineEdit()
                         field_b_widget.setReadOnly(True)
 
                         field_a_widget.currentTextChanged.connect(
@@ -1072,14 +1072,14 @@ class ExpandableFieldGroup(QWidget):
                         field_b_ui_widget = field_b_widget
 
                     elif self.group_label_prefix == "商品サイズ":
-                        field_a_widget = QLineEdit(); field_a_widget.setPlaceholderText("例: 本体")
-                        field_b_widget = QLineEdit(); field_b_widget.setPlaceholderText("例: 幅○○×奥行○○×高さ○○cm")
+                        field_a_widget = JapaneseLineEdit(); field_a_widget.setPlaceholderText("例: 本体")
+                        field_b_widget = JapaneseLineEdit(); field_b_widget.setPlaceholderText("例: 幅○○×奥行○○×高さ○○cm")
                         
                         dim_input_container = QWidget(); dim_layout = QHBoxLayout(dim_input_container)
                         dim_layout.setContentsMargins(0,0,0,0); dim_layout.setSpacing(3)
-                        w_edit = QLineEdit(); w_edit.setPlaceholderText("幅")
-                        d_edit = QLineEdit(); d_edit.setPlaceholderText("奥行")
-                        h_edit = QLineEdit(); h_edit.setPlaceholderText("高さ")
+                        w_edit = JapaneseLineEdit(); w_edit.setPlaceholderText("幅")
+                        d_edit = JapaneseLineEdit(); d_edit.setPlaceholderText("奥行")
+                        h_edit = JapaneseLineEdit(); h_edit.setPlaceholderText("高さ")
                         double_validator = QDoubleValidator(0, 99999.99, 2, self); double_validator.setNotation(QDoubleValidator.StandardNotation)
                         for edit_widget in [w_edit, d_edit, h_edit]:
                             edit_widget.setValidator(double_validator)
@@ -1090,7 +1090,7 @@ class ExpandableFieldGroup(QWidget):
 
                         weight_input_container = QWidget(); weight_layout = QHBoxLayout(weight_input_container)
                         weight_layout.setContentsMargins(0,0,0,0); weight_layout.setSpacing(3)
-                        weight_layout.addWidget(QLabel("約")); weight_edit = QLineEdit(); weight_edit.setPlaceholderText("重量")
+                        weight_layout.addWidget(QLabel("約")); weight_edit = JapaneseLineEdit(); weight_edit.setPlaceholderText("重量")
                         weight_edit.setValidator(double_validator)
                         weight_edit.textChanged.connect(lambda text, r_idx=i-1: self._update_b_field_from_weight(r_idx))
                         weight_layout.addWidget(weight_edit, 1); weight_layout.addWidget(QLabel("kg"), 0)
@@ -1102,8 +1102,8 @@ class ExpandableFieldGroup(QWidget):
                         field_a_widget.editingFinished.connect(lambda r_idx=i-1, f_a_w=field_a_widget: self._update_product_size_b_input_type(f_a_w.text(), r_idx))
                         field_b_widget.textChanged.connect(lambda text, r_idx=i-1: self._update_dimensions_from_b_field(text, r_idx))
                     else: 
-                        field_a_widget = QLineEdit() 
-                        field_b_widget = FilteredLineEdit() if self.group_label_prefix == "関連商品" else QLineEdit()
+                        field_a_widget = JapaneseLineEdit() 
+                        field_b_widget = FilteredLineEdit() if self.group_label_prefix == "関連商品" else JapaneseLineEdit()
 
                     if field_a_widget:
                         field_a_widget.setObjectName(field_name_a); field_a_widget._efg_managed = True
@@ -1148,7 +1148,7 @@ class ExpandableFieldGroup(QWidget):
 
                 else: # not self.has_ab
                     field_name = f"{self.group_label_prefix}_{i}" 
-                    field_widget = QLineEdit(); field_widget.setObjectName(field_name); field_widget._efg_managed = True
+                    field_widget = JapaneseLineEdit(); field_widget.setObjectName(field_name); field_widget._efg_managed = True
                     self.main_fields_ref[field_name] = field_widget
                     if self.parent_app_ref: field_widget.textChanged.connect(self.parent_app_ref.mark_dirty)
                     self.form_layout.addRow(row_label_widget, field_widget)
@@ -1666,13 +1666,13 @@ class ProductApp(QWidget):
             # 新しい楽天SKUオプショングループに含まれるフィールドは個別に追加しない
             if name in self.rakuten_sku_option_fields_list:
                 if name not in self.main_fields: # main_fieldsにウィジェットがなければ作成
-                    self.main_fields[name] = QLineEdit(); self.main_fields[name].setObjectName(name)
+                    self.main_fields[name] = JapaneseLineEdit(); self.main_fields[name].setObjectName(name)
                 continue # ExpandableFieldGroup内で処理されるのでスキップ
             
             # 新しいYahoo!SKUオプショングループに含まれるフィールドは個別に追加しない
             if name in self.yahoo_sku_option_fields_list:
                 if name not in self.main_fields: # main_fieldsにウィジェットがなければ作成
-                    self.main_fields[name] = QLineEdit(); self.main_fields[name].setObjectName(name)
+                    self.main_fields[name] = JapaneseLineEdit(); self.main_fields[name].setObjectName(name)
                 continue # ExpandableFieldGroup内で処理されるのでスキップ
 
             if name in self.main_fields and hasattr(self.main_fields[name], '_efg_managed') and self.main_fields[name]._efg_managed:
@@ -1685,7 +1685,7 @@ class ProductApp(QWidget):
 
                 for id_name_in_group in id_field_names_ordered:
                     if id_name_in_group not in self.main_fields:
-                        self.main_fields[id_name_in_group] = QLineEdit()
+                        self.main_fields[id_name_in_group] = JapaneseLineEdit()
                         self.main_fields[id_name_in_group].setObjectName(id_name_in_group)
                     
                     display_id_label_text = id_name_in_group
@@ -1701,7 +1701,7 @@ class ProductApp(QWidget):
                 continue
 
             if name == EXPLANATION_MARK_FIELD_NAME: # "説明マーク_1" の特別処理
-                self.explanation_mark_line_edit = QLineEdit()
+                self.explanation_mark_line_edit = JapaneseLineEdit()
                 self.explanation_mark_line_edit.setObjectName(EXPLANATION_MARK_FIELD_NAME + "_input")
                 self.main_fields[EXPLANATION_MARK_FIELD_NAME] = self.explanation_mark_line_edit
                 self.explanation_mark_line_edit.textChanged.connect(lambda: self.mark_dirty())
@@ -1722,19 +1722,19 @@ class ProductApp(QWidget):
                     form.addRow("", self.category_select_btn)
                 continue
             elif name == HEADER_IMAGE_DESCRIPTION:
-                self.image_desc_field = QLineEdit()
+                self.image_desc_field = JapaneseLineEdit()
                 self.main_fields[name] = self.image_desc_field
                 form.addRow(QLabel(name), self.image_desc_field) # まず入力欄を追加
                 # image_desc_btn は __init__ の最初の方で定義済み
                 form.addRow("", self.image_desc_btn) # 次の行にボタンを追加
                 continue
             elif name == HEADER_SORT_FIELD or name == "-":
-                fld = self.main_fields.get(name, QLineEdit())
+                fld = self.main_fields.get(name, JapaneseLineEdit())
                 self.main_fields[name] = fld
                 if name == "-": fld.setReadOnly(True)
                 continue
             elif name == "relevant_links": # relevant_links の特別処理
-                fld = self.main_fields.get(name, QLineEdit())
+                fld = self.main_fields.get(name, JapaneseLineEdit())
                 fld.setObjectName(name)
                 # 説明マーク_1 の特別処理で既に main_fields に追加されている場合があるためチェック
                 if name == EXPLANATION_MARK_FIELD_NAME:
@@ -1760,7 +1760,7 @@ class ProductApp(QWidget):
             else:
                 # "色_1" の特別処理のために、ここで fld を確定させる前に name をチェック
                 if name == "色_1":
-                    fld = QLineEdit() # This will be self.main_fields["色_1"]
+                    fld = JapaneseLineEdit() # This will be self.main_fields["色_1"]
                     fld.setObjectName(name) # QLineEditにもオブジェクト名を設定
                     self.main_fields[name] = fld # main_fields に登録
 
@@ -1774,7 +1774,7 @@ class ProductApp(QWidget):
                     color_select_button.clicked.connect(lambda: self._open_color_selection_dialog())
                     form.addRow("", color_select_button) # 次の行にボタンを追加
                     continue # このフィールドの処理は完了
-                fld = self.main_fields.get(name, QLineEdit())
+                fld = self.main_fields.get(name, JapaneseLineEdit())
             # --- End Modification for "お届け状態_1" ---
             
             # self.main_fields[name] = fld # 説明マーク_1 は上で追加済み
@@ -1956,7 +1956,7 @@ class ProductApp(QWidget):
         # self.showMaximized() # アプリケーション起動時に最大化表示
         self.show() # ウィンドウを一度表示してから設定を読み込む
         self._load_settings()
-        self._on_y_category_id_changed(self.main_fields.get(HEADER_Y_CATEGORY_ID, QLineEdit()).text()) # 初期表示のために呼び出し
+        self._on_y_category_id_changed(self.main_fields.get(HEADER_Y_CATEGORY_ID, JapaneseLineEdit()).text()) # 初期表示のために呼び出し
         
         # ウィンドウ表示後にメニューバーを作成（遅延実行で確実に）
         QTimer.singleShot(50, self._create_menu_bar)
@@ -4924,15 +4924,15 @@ class ProductApp(QWidget):
             self._validation_errors = {}
         
         # 商品コードの検証
-        mycode_text = self.main_fields.get(HEADER_MYCODE, QLineEdit()).text()
+        mycode_text = self.main_fields.get(HEADER_MYCODE, JapaneseLineEdit()).text()
         self._update_mycode_digit_count_display(mycode_text)
         
         # 商品名の検証
-        product_name_text = self.main_fields.get(HEADER_PRODUCT_NAME, QLineEdit()).text()
+        product_name_text = self.main_fields.get(HEADER_PRODUCT_NAME, JapaneseLineEdit()).text()
         self._validate_required_field(HEADER_PRODUCT_NAME, product_name_text)
         
         # 価格フィールドの検証
-        price_text = self.main_fields.get(HEADER_PRICE_TAX_INCLUDED, QLineEdit()).text()
+        price_text = self.main_fields.get(HEADER_PRICE_TAX_INCLUDED, JapaneseLineEdit()).text()
         self._validate_price_field(HEADER_PRICE_TAX_INCLUDED, price_text)
         
         # SKUデータとMainデータの整合性チェック
@@ -4945,7 +4945,7 @@ class ProductApp(QWidget):
         if not hasattr(self, 'sku_data_list') or not self.sku_data_list:
             return  # SKUデータがない場合はスキップ
         
-        mycode = self.main_fields.get(HEADER_MYCODE, QLineEdit()).text().strip()
+        mycode = self.main_fields.get(HEADER_MYCODE, JapaneseLineEdit()).text().strip()
         if not mycode:
             return  # 商品コードがない場合はスキップ
         
@@ -5078,7 +5078,7 @@ class ProductApp(QWidget):
             self._update_mycode_digit_count_display(self.main_fields[HEADER_MYCODE].text())
         self._format_and_sync_price_fields()
         self.is_dirty=False; self.save_btn.setEnabled(False)
-        self._on_y_category_id_changed(self.main_fields.get(HEADER_Y_CATEGORY_ID, QLineEdit()).text()) # Y_specを更新
+        self._on_y_category_id_changed(self.main_fields.get(HEADER_Y_CATEGORY_ID, JapaneseLineEdit()).text()) # Y_specを更新
         self._sync_product_size_to_yspec() # ★クリア後にも同期
 
 
@@ -5319,7 +5319,7 @@ class ProductApp(QWidget):
             if efg_inst.group_label_prefix == "関連商品":
                 if hasattr(efg_inst, 'update_all_related_product_code_counts'):
                     efg_inst.update_all_related_product_code_counts()
-        # self._on_y_category_id_changed(self.main_fields.get(HEADER_Y_CATEGORY_ID, QLineEdit()).text()) # Y_specのロード後に再度呼ぶ必要はない場合がある
+        # self._on_y_category_id_changed(self.main_fields.get(HEADER_Y_CATEGORY_ID, JapaneseLineEdit()).text()) # Y_specのロード後に再度呼ぶ必要はない場合がある
         self._clear_auto_save_data() # 新規作成が完了したので、自動保存データをクリア
         self.is_dirty = False # ロード完了時は常にクリーンな状態
         self.save_btn.setEnabled(False) # 保存ボタンも無効化
@@ -6896,7 +6896,7 @@ class ProductApp(QWidget):
         self.product_list.clearSelection()
         
         # Y_specフィールドも適切に更新 (クリアされた状態になる)
-        self._on_y_category_id_changed(self.main_fields.get(HEADER_Y_CATEGORY_ID, QLineEdit()).text())
+        self._on_y_category_id_changed(self.main_fields.get(HEADER_Y_CATEGORY_ID, JapaneseLineEdit()).text())
         
         # 削除後の状態確認ログ
         logging.info(f"削除処理完了後の状態: 商品コード='{self.main_fields[HEADER_MYCODE].text()}', is_dirty={self.is_dirty}")
@@ -7041,7 +7041,7 @@ class ProductApp(QWidget):
             current_item_on_display_code = self._safe_widget_operation(
                 self.main_fields.get(HEADER_MYCODE), 
                 "商品コード取得",
-                lambda: self.main_fields.get(HEADER_MYCODE, QLineEdit()).text().strip()
+                lambda: self.main_fields.get(HEADER_MYCODE, JapaneseLineEdit()).text().strip()
             ) or ""
             self._safe_widget_operation(
                 self.control_radio_p, 
@@ -7715,7 +7715,7 @@ class ProductApp(QWidget):
             settings.remove("autosave/sku_data") # データがなければキーを削除
 
         # Y!specデータ
-        current_y_category_id = self.main_fields.get(HEADER_Y_CATEGORY_ID, QLineEdit()).text()
+        current_y_category_id = self.main_fields.get(HEADER_Y_CATEGORY_ID, JapaneseLineEdit()).text()
         settings.setValue("autosave/y_category_id_for_yspec", current_y_category_id) # Y_spec復元時のカテゴリID
         for i in range(MAX_Y_SPEC_COUNT):
             key = f"autosave/yspec/Y_spec{i+1}"
@@ -8950,7 +8950,7 @@ class IdSearchDialog(QDialog):
 
         layout = QVBoxLayout(self)
 
-        self.search_input = QLineEdit()
+        self.search_input = JapaneseLineEdit()
         self.search_input.setPlaceholderText("ID、名称、階層で検索...")
         self.search_input.textChanged.connect(self._filter_results)
         layout.addWidget(self.search_input)
