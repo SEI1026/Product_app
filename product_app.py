@@ -3450,13 +3450,18 @@ class ProductApp(QWidget):
                                                             weight_data['field'].setFocus()
                                                             weight_data['field'].selectAll()
                                                         else:
+                                                            pass
                                                     else:
+                                                        pass
                                                 else:
+                                                    pass
                                             next_widget.setFocus()  # フォールバック
                                             self._ensure_field_visible(next_widget)
                                             return
                                         else:
+                                            pass
                                     else:
+                                        pass
                                 except (ValueError, IndexError) as e:
                                     pass
                                 break
