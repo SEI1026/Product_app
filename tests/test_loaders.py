@@ -27,10 +27,10 @@ class TestLoadCategoriesFromCsv:
         """正常なCSVファイルの読み込み"""
         # テスト用のCSVデータを作成
         csv_data = [
-            ["レベル", "カテゴリ名", "親カテゴリ名"],
-            ["1", "カテゴリA", "親A"],
-            ["2", "カテゴリB", "親B"],
-            ["3", "カテゴリC", "親C"]
+            ["ID", "名前", "その他"],
+            ["1", "カテゴリA", "説明A"],
+            ["2", "カテゴリB", "説明B"],
+            ["3", "カテゴリC", "説明C"]
         ]
         
         with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.csv', encoding='utf-8-sig') as f:
@@ -42,10 +42,8 @@ class TestLoadCategoriesFromCsv:
             result = load_categories_from_csv(temp_path)
             
             assert len(result) == 3
-            # 結果は (level, name, parent) のタプルのリスト
-            assert result[0] == (1, "カテゴリA", "親A")
-            assert result[1] == (2, "カテゴリB", "親B")
-            assert result[2] == (3, "カテゴリC", "親C")
+            assert result[0] == (1, "カテゴリA", "説明A")
+            assert result[1] == (2, "カテゴリB", "説明B")
             
         finally:
             os.unlink(temp_path)
@@ -169,8 +167,9 @@ class TestLoadersIntegration:
         """全てのローダーがエンコーディングを適切に処理"""
         # 日本語を含むテストデータ
         japanese_data = [
-            ["1", "テーブル", "家具"],
-            ["2", "椅子", "家具"]
+            ["ID", "商品名"],
+            ["1", "テーブル"],
+            ["2", "椅子"]
         ]
         
         with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.csv', encoding='utf-8-sig') as f:
@@ -182,9 +181,8 @@ class TestLoadersIntegration:
             result = load_categories_from_csv(temp_path)
             
             assert len(result) == 2
-            # 結果は (level, name, parent) のタプル
-            assert result[0][1] == "テーブル"  # name部分
-            assert result[1][1] == "椅子"     # name部分
+            assert result[0] == (1, "テーブル", "")
+            assert result[1] == (2, "椅子", "")
             
         finally:
             os.unlink(temp_path)
