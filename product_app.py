@@ -1494,7 +1494,11 @@ class ProductApp(QWidget):
         
         # ステータスバーの追加
         self.status_bar = QStatusBar(self)
-        self.status_bar.setFixedHeight(24)
+        # DPIスケーリングに対応した高さ設定
+        screen = QApplication.primaryScreen()
+        dpi_scale = screen.physicalDotsPerInch() / 96.0
+        status_height = max(24, int(24 * dpi_scale))
+        self.status_bar.setFixedHeight(status_height)
         self.status_bar.setSizeGripEnabled(False)
         self.status_bar.showMessage("起動中...")
         top_layout.addWidget(self.status_bar)
@@ -2719,18 +2723,25 @@ class ProductApp(QWidget):
         """ステータスバーの初期化"""
         logging.debug("ステータスバー初期化開始")
         try:
-            self.status_bar.setStyleSheet("""
-                QStatusBar {
+            # DPIスケーリングに対応
+            screen = QApplication.primaryScreen()
+            dpi_scale = screen.physicalDotsPerInch() / 96.0
+            font_size = max(12, int(12 * dpi_scale))
+            padding_v = max(2, int(4 * dpi_scale))
+            padding_h = max(8, int(8 * dpi_scale))
+            
+            self.status_bar.setStyleSheet(f"""
+                QStatusBar {{
                     background-color: #f8fafc;
                     border-top: 1px solid #e2e8f0;
                     color: #64748b;
-                    font-size: 12px;
-                    padding: 2px 8px;
-                }
-                QStatusBar::item {
+                    font-size: {font_size}px;
+                    padding: {padding_v}px {padding_h}px;
+                }}
+                QStatusBar::item {{
                     border: none;
-                    padding: 0px 8px;
-                }
+                    padding: 0px {padding_h}px;
+                }}
             """)
             
             # 初期化メッセージをクリア
@@ -8145,13 +8156,26 @@ class ProductApp(QWidget):
 <p>30秒ごとに自動保存されます。</p>
         """
         
-        msg_box = QMessageBox(self)
-        msg_box.setWindowTitle("ショートカット一覧")
-        msg_box.setTextFormat(Qt.RichText)
-        msg_box.setText(help_text)
-        msg_box.setStandardButtons(QMessageBox.Ok)
-        msg_box.setIcon(QMessageBox.Information)
-        msg_box.exec_()
+        # 既存のショートカットヘルプダイアログがあれば前面に持ってくる
+        if hasattr(self, '_shortcut_help_dialog') and self._shortcut_help_dialog.isVisible():
+            self._shortcut_help_dialog.raise_()
+            self._shortcut_help_dialog.activateWindow()
+            return
+        
+        # モーダルレス（非ブロッキング）ダイアログとして作成
+        self._shortcut_help_dialog = QMessageBox(self)
+        self._shortcut_help_dialog.setWindowTitle("ショートカット一覧")
+        self._shortcut_help_dialog.setTextFormat(Qt.RichText)
+        self._shortcut_help_dialog.setText(help_text)
+        self._shortcut_help_dialog.setStandardButtons(QMessageBox.Ok)
+        self._shortcut_help_dialog.setIcon(QMessageBox.Information)
+        
+        # モーダルレスで表示（ダイアログを開いたままメインアプリを操作可能）
+        self._shortcut_help_dialog.setWindowModality(Qt.NonModal)
+        self._shortcut_help_dialog.show()
+        
+        # ダイアログが閉じられた時のクリーンアップ
+        self._shortcut_help_dialog.finished.connect(lambda: delattr(self, '_shortcut_help_dialog') if hasattr(self, '_shortcut_help_dialog') else None)
 
     def _create_menu_bar(self):
         """メニューバーを作成してショートカットを表示"""
