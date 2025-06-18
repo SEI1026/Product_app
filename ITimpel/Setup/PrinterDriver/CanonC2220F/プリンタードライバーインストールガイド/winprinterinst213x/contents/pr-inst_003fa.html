@@ -1,0 +1,121 @@
+﻿<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd">
+<html xml:lang="ja" xmlns="http://www.w3.org/1999/xhtml">
+	<head>
+		<meta name="Generator" content="CAESAR" />
+		<meta http-equiv="Content-Type" content="application/xhtml+xml; charset=UTF-8" />
+		<meta http-equiv="content-style-type" content="text/css" />
+		<meta http-equiv="content-script-type" content="text/javascript" />
+		<meta http-equiv="X-UA-Compatible" content="IE=emulateIE7" />
+		<title>概要 - プリンタードライバー インストールガイド</title>
+		<link rel="stylesheet" type="text/css" href="../styles/frame_style.css" />
+		<link rel="stylesheet" type="text/css" href="../styles/frame_sub.css" disabled="disabled" title="sub" />
+		<link href="styles/style001/style.css" rel="stylesheet" type="text/css" />
+		<script type="text/javascript" charset="UTF-8" src="../jsons/resource.json"></script>
+		<script type="text/javascript" charset="UTF-8" src="../jsons/toc.json"></script>
+		<script type="text/javascript" charset="UTF-8" src="../jsons/search.json"></script>
+		<script type="text/javascript" charset="UTF-8" src="../scripts/jquery.js"></script>
+		<script type="text/javascript" charset="UTF-8" src="../scripts/library.js"></script>
+		<script type="text/javascript" charset="UTF-8" src="../scripts/script.js"></script>
+	</head>
+	<body>
+		<div id="id_header"><table cellpadding="0" cellspacing="0"><tr><th class="header"><span id="id_res_canon_logo" onclick="document.location.href='../frame_htmls/home.html';"></span><span id="id_res_guide_name"></span></th><td class="header" id="id_header_include"></td></tr><tr><th class="bar" id="id_tabs"><button id="id_res_contents" class="tab_active" accesskey="c"></button><button id="id_res_search" class="tab_inactive" accesskey="s"></button></th><td class="bar"><img src="../frame_images/bar_icon_pnl_hide.gif" id="id_res_bar_icon_toggle_panel" /><button id="id_res_bar_icon_previous" accesskey="b"></button><label id="id_res_bar_label_previous" for="id_res_bar_icon_previous"></label><button id="id_res_bar_icon_next" accesskey="n"></button><label id="id_res_bar_label_next" for="id_res_bar_icon_next"></label><button id="id_res_bar_icon_print" accesskey="p"></button><label id="id_res_bar_label_print" for="id_res_bar_icon_print"></label></td></tr></table></div>
+		<div id="id_panel">
+			<div id="id_panel_toc" style="display:None;">
+				<div id="id_panel_label"><label id="id_res_chapter"></label><select id="id_chapter_select"></select></div>
+				<div id="id_toc_open_close"><a id="id_res_open_toc_all" href="#"></a><img src="../frame_images/pnl_vr.gif" /><a id="id_res_close_toc_all" href="#"></a></div>
+				<div id="id_toc"></div>
+				<div id="id_print_all"><a id="id_res_print_all" href="#"></a></div>
+			</div>
+			<div id="id_panel_search" style="display:None;">
+				<div id="id_panel_label"><label id="id_res_keyword" for="id_search"></label><input id="id_search" name="search" accesskey="k" onkeydown="return fncSearchKeyDown(event.keyCode, this.value);" /><button id="id_search_button"></button></div>
+				<div id="id_search_options_label"></div>
+				<div id="id_search_options" style="display:None;">
+					<div><input type="radio" name="search_options_search_scope" id="id_search_options_search_scope_all" /><label for="id_search_options_search_scope_all" id="id_res_search_options_search_scope_all"></label></div>
+					<div><input type="radio" name="search_options_search_scope" id="id_search_options_search_scope_chapter" /><label for="id_search_options_search_scope_chapter" id="id_res_search_options_search_scope_chapter"></label></div>
+					<div id="id_search_chapters"></div>
+					<div><input type="checkbox" id="id_search_options_case" /><label for="id_search_options_case" id="id_res_search_options_case"></label></div>
+					<div><input type="checkbox" id="id_search_options_multibyte" /><label for="id_search_options_multibyte" id="id_res_search_options_multibyte"></label></div>
+					<div id="id_search_options_bottom"><button id="id_res_search_button"></button></div>
+				</div>
+				<div id="id_search_results"></div>
+				<div id="id_search_status"></div>
+			</div>
+		</div>
+		<!--CONTENT_START-->
+		<div id="id_content">
+			<div class="h1"><a id="bd1cf3952fe5f1c3c39d5f9109f40377"></a>概要</div>
+			<div class="text">Canon Driver Information Assist Serviceを使用して、以下の情報を取得できます。</div>
+			<div class="list">デバイスのオプション情報：<br />デバイスに装着されているオプション(給紙カセット、フィニッシャーなど)の情報を取得します。（→「<a href="pr-inst_005aa.html#31cce30739866dfa8b6e8e1d735619df">オプション設定</a>」）</div>
+			<div class="list">キャリブレーション情報：<br />デバイスのオプション情報取得時、およびカラー印刷するたびに取得します。 </div>
+			<div class="list">部門管理印刷時の認証：<br />部門管理機能をお使いの場合、印刷するたびに認証情報を取得します。</div>
+			<div class="list">用紙情報：<br />デバイスに登録されているユーザー設定用紙（ユーザ定義用紙）の情報を取得します。</div>
+			<div class="list">暗号サポート情報 </div>
+			<div class="h2">使用するサービス</div>
+			<div class="h4">使用するOSのサービス</div>
+			<div class="list">Remote Procedure(RPC)</div>
+			<div class="list">TCP/IP NetBIOS Helper Service</div>
+			<div class="list">Workstation</div>
+			<div class="text">上記サービスがOSにインストールされていない場合、もしくは「無効」になっていた場合、Canon Driver Information Assist Serviceは起動できません。 </div>
+			<div class="h4">使用するプロトコル</div>
+			<div class="list">UDP、TCP(IPv4、IPv6) </div>
+			<div class="h4">サポートするデバイス接続形態</div>
+			<div class="list">ネットワーク接続： TCP/IP、IPX </div>
+			<div class="list">ローカル接続（32ビット）： USB </div>
+			<div class="h2">デバイス情報の取得経路</div>
+			<div class="text">Canon Driver Information Assist Serviceは、以下の要因によりデバイスから情報を取得するのに必要なモジュールと、情報取得の経路が異なります。</div>
+			<div class="list">プリンターキューの種類（ローカルプリンター、ネットワークプリンター）</div>
+			<div class="list">デバイスの接続方法（ネットワーク接続（LPRなど）、ローカル接続（USB））</div>
+			<div class="list">サーバー環境（ターミナルサーバー、XenApp/Presentation Server）</div>
+			<div class="h4">ローカルプリンターの場合</div>
+			<div class="outline">
+				<table class="outline">
+					<tbody class="outline">
+						<tr class="outline">
+							<td colspan="1" rowspan="1" class="col_0 row_0 outline outline_col_0 outline_row_0">
+								<div class="text"><span class="no_break">ネットワーク接続</span></div>
+							</td>
+							<td colspan="1" rowspan="1" class="col_1 row_0 outline outline_col_1 outline_row_0">
+								<div class="text"><span class="no_break">ドライバーのみで情報取得が可能</span></div>
+							</td>
+						</tr>
+						<tr class="outline">
+							<td colspan="1" rowspan="1" class="col_0 row_1 outline outline_col_0 outline_row_1">
+								<div class="text"><span class="no_break">ローカル接続</span></div>
+							</td>
+							<td colspan="1" rowspan="1" class="col_1 row_1 outline outline_col_1 outline_row_1">
+								<div class="text"><span class="no_break">同一コンピューター上にCanon Driver Information Assist Serviceが必要</span></div>
+							</td>
+						</tr>
+					</tbody>
+				</table>
+			</div>
+			<div class="h4">ネットワークプリンターの場合</div>
+			<div class="outline">
+				<table class="outline">
+					<tbody class="outline">
+						<tr class="outline">
+							<td colspan="1" rowspan="1" class="col_0 row_0 outline outline_col_0 outline_row_0">
+								<div class="text"><span class="no_break">サーバー共有 </span></div>
+							</td>
+							<td colspan="1" rowspan="1" class="col_1 row_0 outline outline_col_1 outline_row_0">
+								<div class="text"><span class="no_break">プリントサーバーにCanon Driver Information Assist Service</span><span class="no_break">の</span><span class="no_break">インストールが必要</span></div>
+							</td>
+						</tr>
+						<tr class="outline">
+							<td colspan="1" rowspan="1" class="col_0 row_1 outline outline_col_0 outline_row_1">
+								<div class="text"><span class="no_break">IPP接続 </span></div>
+							</td>
+							<td colspan="1" rowspan="1" class="col_1 row_1 outline outline_col_1 outline_row_1">
+								<div class="text"><span class="no_break">ドライバーのみで情報取得が可能（IIS経由の場合は構成情報</span><span class="no_break">取得不可）</span></div>
+							</td>
+						</tr>
+					</tbody>
+				</table>
+			</div>
+			<div class="text"></div>
+		</div>
+		<!--CONTENT_END-->
+		<div id="id_footer"><table cellpadding="0" cellspacing="0"><tr><th><span id="id_res_copy_right"></span></th><td id="id_footer_include"></td></tr></table></div>
+		<div id="id_breadcrumbs"><a href="../frame_htmls/home.html" id="id_res_home"></a> » <a href="pr-inst_003_ex.html" id="id_level_1" toc_id="pr-inst_003_ex" title="カスタムインストール" >カスタムインストール</a> » <a href="pr-inst_003f.html" id="id_level_2" toc_id="pr-inst_003f" title="Canon Driver Information Assist Serviceのインストール" >Canon Driver Information Assist Serviceのインストール</a> » <a id="id_level_3" toc_id="pr-inst_003fa" title="概要" >概要</a></div>
+	</body>
+</html>

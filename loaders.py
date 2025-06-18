@@ -425,8 +425,9 @@ def load_id_master_data(filepath, id_col_header, name_col_header, hierarchy_col_
     if getattr(sys, 'frozen', False):
         allowed_base = os.path.abspath(sys._MEIPASS)
     else:
-        allowed_base = os.path.abspath(".")
-    
+        # Use the directory of the current script (loaders.py) as the allowed base for relative paths
+        allowed_base = os.path.abspath(os.path.dirname(__file__))
+
     if not effective_filepath.startswith(allowed_base):
         logging.error(f"セキュリティ警告: 許可されていないディレクトリへのアクセスが試行されました: {effective_filepath}")
         logging.error(f"  実際のパス: {effective_filepath}")

@@ -1,0 +1,10 @@
+コマンドプロンプトを管理者として実行すること
+
+
+// 登録
+regsvr32 \\express5800\ITimpel\EXE\VB6ImpelFax.dll
+
+
+// 解除
+regsvr32 /u \\express5800\ITimpel\EXE\\VB6ImpelFax.dll
+

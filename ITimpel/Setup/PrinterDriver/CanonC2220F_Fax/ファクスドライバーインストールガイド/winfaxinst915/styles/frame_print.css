@@ -1,0 +1,40 @@
+html{
+	border:					0;
+	height:					100%;
+	overflow:				Scroll;
+}
+div.print_instructions{
+	background:				#FFFFEF;
+	border-bottom:			Solid 1px #808080;
+	padding:				5px;
+	font:					Normal 9pt "MS PGothic","Osaka",Sans-serif;
+	color:					#808080;
+}
+div.print_instructions img{
+	vertical-align:			Middle;
+	margin-right:			5px;
+}
+div.print_instructions button{
+	text-align:				Center;
+	border:					Solid 1px #808080;
+	font:					Normal 9pt "MS PGothic","Osaka",Sans-serif;
+	cursor:					Pointer;
+	width:					7em;
+	padding:				3px 5px;
+	color:					#0000FF;
+	background:				#EFEFEF;
+	height:					23px;
+	vertical-align:			Middle;
+	margin-left:			10px;
+}
+@media print{
+	div.print_instructions{
+		display:			None;
+	}
+	div.page_end{
+		page-break-after:	Always;
+	}
+	div.link_to_top{
+		display:			None;
+	}
+}

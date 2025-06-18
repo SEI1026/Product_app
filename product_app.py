@@ -7653,7 +7653,7 @@ class ProductApp(QWidget):
                     if text_b:
                         relevant_links_parts.append(text_b)
         
-        final_relevant_links_text = "".join(relevant_links_parts)
+        final_relevant_links_text = " ".join(relevant_links_parts)
         
         relevant_links_widget = self.main_fields["relevant_links"]
         relevant_links_widget.blockSignals(True)

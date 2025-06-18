@@ -1,0 +1,156 @@
+﻿<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd">
+<html xml:lang="ja" xmlns="http://www.w3.org/1999/xhtml">
+	<head>
+		<meta name="Generator" content="CAESAR" />
+		<meta http-equiv="Content-Type" content="application/xhtml+xml; charset=UTF-8" />
+		<meta http-equiv="content-style-type" content="text/css" />
+		<meta http-equiv="content-script-type" content="text/javascript" />
+		<meta http-equiv="X-UA-Compatible" content="IE=emulateIE7" />
+		<title>標準TCP/IPポートの変更 - プリンタードライバー インストールガイド</title>
+		<link rel="stylesheet" type="text/css" href="../styles/frame_style.css" />
+		<link rel="stylesheet" type="text/css" href="../styles/frame_sub.css" disabled="disabled" title="sub" />
+		<link href="styles/style001/style.css" rel="stylesheet" type="text/css" />
+		<script type="text/javascript" charset="UTF-8" src="../jsons/resource.json"></script>
+		<script type="text/javascript" charset="UTF-8" src="../jsons/toc.json"></script>
+		<script type="text/javascript" charset="UTF-8" src="../jsons/search.json"></script>
+		<script type="text/javascript" charset="UTF-8" src="../scripts/jquery.js"></script>
+		<script type="text/javascript" charset="UTF-8" src="../scripts/library.js"></script>
+		<script type="text/javascript" charset="UTF-8" src="../scripts/script.js"></script>
+	</head>
+	<body>
+		<div id="id_header"><table cellpadding="0" cellspacing="0"><tr><th class="header"><span id="id_res_canon_logo" onclick="document.location.href='../frame_htmls/home.html';"></span><span id="id_res_guide_name"></span></th><td class="header" id="id_header_include"></td></tr><tr><th class="bar" id="id_tabs"><button id="id_res_contents" class="tab_active" accesskey="c"></button><button id="id_res_search" class="tab_inactive" accesskey="s"></button></th><td class="bar"><img src="../frame_images/bar_icon_pnl_hide.gif" id="id_res_bar_icon_toggle_panel" /><button id="id_res_bar_icon_previous" accesskey="b"></button><label id="id_res_bar_label_previous" for="id_res_bar_icon_previous"></label><button id="id_res_bar_icon_next" accesskey="n"></button><label id="id_res_bar_label_next" for="id_res_bar_icon_next"></label><button id="id_res_bar_icon_print" accesskey="p"></button><label id="id_res_bar_label_print" for="id_res_bar_icon_print"></label></td></tr></table></div>
+		<div id="id_panel">
+			<div id="id_panel_toc" style="display:None;">
+				<div id="id_panel_label"><label id="id_res_chapter"></label><select id="id_chapter_select"></select></div>
+				<div id="id_toc_open_close"><a id="id_res_open_toc_all" href="#"></a><img src="../frame_images/pnl_vr.gif" /><a id="id_res_close_toc_all" href="#"></a></div>
+				<div id="id_toc"></div>
+				<div id="id_print_all"><a id="id_res_print_all" href="#"></a></div>
+			</div>
+			<div id="id_panel_search" style="display:None;">
+				<div id="id_panel_label"><label id="id_res_keyword" for="id_search"></label><input id="id_search" name="search" accesskey="k" onkeydown="return fncSearchKeyDown(event.keyCode, this.value);" /><button id="id_search_button"></button></div>
+				<div id="id_search_options_label"></div>
+				<div id="id_search_options" style="display:None;">
+					<div><input type="radio" name="search_options_search_scope" id="id_search_options_search_scope_all" /><label for="id_search_options_search_scope_all" id="id_res_search_options_search_scope_all"></label></div>
+					<div><input type="radio" name="search_options_search_scope" id="id_search_options_search_scope_chapter" /><label for="id_search_options_search_scope_chapter" id="id_res_search_options_search_scope_chapter"></label></div>
+					<div id="id_search_chapters"></div>
+					<div><input type="checkbox" id="id_search_options_case" /><label for="id_search_options_case" id="id_res_search_options_case"></label></div>
+					<div><input type="checkbox" id="id_search_options_multibyte" /><label for="id_search_options_multibyte" id="id_res_search_options_multibyte"></label></div>
+					<div id="id_search_options_bottom"><button id="id_res_search_button"></button></div>
+				</div>
+				<div id="id_search_results"></div>
+				<div id="id_search_status"></div>
+			</div>
+		</div>
+		<!--CONTENT_START-->
+		<div id="id_content">
+			<div class="h1"><a id="632a9294b6cfb4f6c1b2f0facf6f08a5"></a>標準TCP/IPポートの変更</div>
+			<div class="text">ドライバーのインストール後に、ネットワーク接続されているデバイスで使用するプリンターポートを「Standard TCP/IP Port」へ変更します。ここでは、LPRプロトコル、Rawプロトコルを使用する場合の設定方法を説明しています。</div>
+			<div class="table_important">
+				<table class="table_important">
+					<thead class="table_important">
+						<tr class="table_important">
+							<td colspan="1" rowspan="1" class="col_0 row_0 table_important table_important_col_0 table_important_row_0">
+								<div class="text">重要</div>
+							</td>
+						</tr>
+					</thead>
+					<tbody class="table_important">
+						<tr class="table_important">
+							<td colspan="1" rowspan="1" class="col_0 row_1 table_important table_important_col_0 table_important_row_1">
+								<div class="list">コンピューターを起動した際に、必ずAdministratorsのメンバーとしてログオンしてください。</div>
+							</td>
+						</tr>
+					</tbody>
+				</table>
+			</div>
+			<div class="table_note">
+				<table class="table_note">
+					<thead class="table_note">
+						<tr class="table_note">
+							<td colspan="1" rowspan="1" class="col_0 row_0 table_note table_note_col_0 table_note_row_0">
+								<div class="text">メモ</div>
+							</td>
+						</tr>
+					</thead>
+					<tbody class="table_note">
+						<tr class="table_note">
+							<td colspan="1" rowspan="1" class="col_0 row_1 table_note table_note_col_0 table_note_row_1">
+								<div class="list">LPRは、TCP/IPで一般的に使用されているプロトコルです。</div>
+								<div class="list">Rawは、Windowsで利用できるプロトコルです。LPRより高速にデータを送信できます。</div>
+							</td>
+						</tr>
+					</tbody>
+				</table>
+			</div>
+			<div class="step_number">1</div>
+			<div class="step_text">ドライバーをインストール</div>
+			<div class="text">詳細は、「<a href="pr-inst_003a.html#f07f3aa24ee4935a2df842e2363869b5">ポートを設定してインストール</a>」を参照してださい。</div>
+			<div class="text">仮のポート（［LPT1］など）を設定します。</div>
+			<div class="step_number">2</div>
+			<div class="step_text">［<img src="./images/book_images/b_start.gif" alt="" />］（スタート）メニューから［デバイスとプリンター］を選択</div>
+			<div class="text">Windows 8/8.1/Server 2012/Server 2012 R2：デスクトップで画面右側のチャームを表示したあと、［<img src="./images/book_images/b_drv_win8_setup.gif" alt="" />設定］→［コントロールパネル］→［デバイスとプリンター］をクリックまたはタップ</div>
+			<div class="text">Windows Vista：［<img src="./images/book_images/b_start.gif" alt="" />］（スタート）－［コントロールパネル］－［プリンタ］を選択</div>
+			<div class="text">Windows XP Professional/Server 2003：［スタート］－［プリンタとFAX］を選択</div>
+			<div class="text">Windows XP Home Edition：［スタート］－［コントロールパネル］－［プリンタとその他のハードウェア］－［プリンタとFAX］を選択</div>
+			<div class="step_number">3</div>
+			<div class="step_text">設定を行うデバイスのアイコンを右クリック → [プリンターのプロパティ](または［プロパティ］)をクリック</div>
+			<div class="step_number">4</div>
+			<div class="step_text">［ポート］タブ → ［ポートの追加］をクリック</div>
+			<div class="figure"><img src="./images/book_images/pubnumbers/WGPv2130_JP/b_003a_s9_1_c.jpg" alt="" /></div>
+			<div class="step_number">5</div>
+			<div class="step_text">［プリンターポート］/［プリンタポート］ダイアログボックスで、［利用可能なプリンタポートの種類］/［利用可能なポートの種類］から［Standard TCP/IP Port］を選択 → ［新しいポート］をクリック</div>
+			<div class="step_number">6</div>
+			<div class="step_text">［標準TCP/IPプリンターポートの追加ウィザード］で、［次へ］をクリック</div>
+			<div class="step_number">7</div>
+			<div class="step_text">[プリンター名またはIPアドレス]にデバイス名、またはIPアドレスを入力 → ［次へ］をクリック</div>
+			<div class="text">デバイス名は、ネットワーク上で使用されているデバイス名を使用してください。</div>
+			<div class="text">［ポート名］は自動的に入力されます。必要に応じて変更してくだい。</div>
+			<div class="text">［ポート情報がさらに必要です］（または[追加のポート情報が必要です]）画面が表示された場合は、以下のいずれかの操作を行います。</div>
+			<div class="list">ウィザードの前のページに戻る → [プリンター名またはIPアドレス]を再入力 → ［次へ］をクリック</div>
+			<div class="list">［デバイスの種類］で［標準］を選択 → ［Canon Network Printing Device with P9100］を選択 → ［次へ］をクリック</div>
+			<div class="table_note">
+				<table class="table_note">
+					<thead class="table_note">
+						<tr class="table_note">
+							<td colspan="1" rowspan="1" class="col_0 row_0 table_note table_note_col_0 table_note_row_0">
+								<div class="text">メモ</div>
+							</td>
+						</tr>
+					</thead>
+					<tbody class="table_note">
+						<tr class="table_note">
+							<td colspan="1" rowspan="1" class="col_0 row_1 table_note table_note_col_0 table_note_row_1">
+								<div class="list">お使いの機種によっては、［ポート情報がさらに必要です］（または[追加のポート情報が必要です]）画面の［デバイスの種類］-［標準］で選択するデバイス種類が異なる場合があります。</div>
+							</td>
+						</tr>
+					</tbody>
+				</table>
+			</div>
+			<div class="step_number">8</div>
+			<div class="step_text">［完了］をクリック</div>
+			<div class="step_number">9</div>
+			<div class="step_text">［プリンターポート］/［プリンタポート］ダイアログボックスで、［閉じる］をクリック</div>
+			<div class="step_number">10</div>
+			<div class="step_text">［ポートの構成］をクリック</div>
+			<div class="figure"><img src="./images/book_images/pubnumbers/WGPv2130_JP/b_003a_s9_4_c.jpg" alt="" /></div>
+			<div class="step_number">11</div>
+			<div class="step_text">ポートを設定</div>
+			<div class="step_path"><a href="pr-inst_003i.html#1859332f4ee4872eb51b178f2939c134">LPRを使用する場合：</a></div>
+			<div class="step_path"><a href="pr-inst_003i.html#67e0527563b73e0fc04b94e060efec60">Rawを使用する場合：</a></div>
+			<div class="h5"><a id="1859332f4ee4872eb51b178f2939c134"></a>LPRを使用する場合：</div>
+			<div class="step_sub">［プロトコル］で［LPR］を選択 → ［LPR設定］の［キュー名］にプリントキュー名を入力 → ［OK］をクリック</div>
+			<div class="figure"><img src="./images/book_images/b_003a_s9_2_c.jpg" alt="" /></div>
+			<div class="text">［キュー名］に次のいずれかのプリントキューを指定できます。</div>
+			<div class="text">LP：デバイスのスプールの設定に従って出力します。通常はこの設定にしてください。</div>
+			<div class="text">SPOOL：デバイスの設定にかかわらず、常にハードディスクにスプールしてから出力します。</div>
+			<div class="text">DIRECT：デバイスの設定にかかわらず、常にハードディスクにスプールせずに出力します。</div>
+			<div class="h5"><a id="67e0527563b73e0fc04b94e060efec60"></a>Rawを使用する場合：</div>
+			<div class="step_sub">［プロトコル］で［Raw］を選択 → ［OK］をクリック</div>
+			<div class="step_number">12</div>
+			<div class="step_text">［閉じる］をクリック</div>
+		</div>
+		<!--CONTENT_END-->
+		<div id="id_footer"><table cellpadding="0" cellspacing="0"><tr><th><span id="id_res_copy_right"></span></th><td id="id_footer_include"></td></tr></table></div>
+		<div id="id_breadcrumbs"><a href="../frame_htmls/home.html" id="id_res_home"></a> » <a href="pr-inst_003_ex.html" id="id_level_1" toc_id="pr-inst_003_ex" title="カスタムインストール" >カスタムインストール</a> » <a id="id_level_2" toc_id="pr-inst_003i" title="標準TCP/IPポートの変更" >標準TCP/IPポートの変更</a></div>
+	</body>
+</html>

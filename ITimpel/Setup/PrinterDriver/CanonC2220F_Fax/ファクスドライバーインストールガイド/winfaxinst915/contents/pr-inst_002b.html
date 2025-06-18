@@ -1,0 +1,181 @@
+﻿<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.1//EN" "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd">
+<html xml:lang="ja" xmlns="http://www.w3.org/1999/xhtml">
+	<head>
+		<meta name="Generator" content="CAESAR" />
+		<meta http-equiv="Content-Type" content="application/xhtml+xml; charset=UTF-8" />
+		<meta http-equiv="content-style-type" content="text/css" />
+		<meta http-equiv="content-script-type" content="text/javascript" />
+		<meta http-equiv="X-UA-Compatible" content="IE=emulateIE7" />
+		<title>ネットワーク接続 - ファクスドライバー インストールガイド</title>
+		<link rel="stylesheet" type="text/css" href="../styles/frame_style.css" />
+		<link rel="stylesheet" type="text/css" href="../styles/frame_sub.css" disabled="disabled" title="sub" />
+		<link href="styles/style001/style.css" rel="stylesheet" type="text/css" />
+		<script type="text/javascript" charset="UTF-8" src="../jsons/resource.json"></script>
+		<script type="text/javascript" charset="UTF-8" src="../jsons/toc.json"></script>
+		<script type="text/javascript" charset="UTF-8" src="../jsons/search.json"></script>
+		<script type="text/javascript" charset="UTF-8" src="../scripts/jquery.js"></script>
+		<script type="text/javascript" charset="UTF-8" src="../scripts/library.js"></script>
+		<script type="text/javascript" charset="UTF-8" src="../scripts/script.js"></script>
+	</head>
+	<body>
+		<div id="id_header"><table cellpadding="0" cellspacing="0"><tr><th class="header"><span id="id_res_canon_logo" onclick="document.location.href='../frame_htmls/home.html';"></span><span id="id_res_guide_name"></span></th><td class="header" id="id_header_include"></td></tr><tr><th class="bar" id="id_tabs"><button id="id_res_contents" class="tab_active" accesskey="c"></button><button id="id_res_search" class="tab_inactive" accesskey="s"></button></th><td class="bar"><img src="../frame_images/bar_icon_pnl_hide.gif" id="id_res_bar_icon_toggle_panel" /><button id="id_res_bar_icon_previous" accesskey="b"></button><label id="id_res_bar_label_previous" for="id_res_bar_icon_previous"></label><button id="id_res_bar_icon_next" accesskey="n"></button><label id="id_res_bar_label_next" for="id_res_bar_icon_next"></label><button id="id_res_bar_icon_print" accesskey="p"></button><label id="id_res_bar_label_print" for="id_res_bar_icon_print"></label></td></tr></table></div>
+		<div id="id_panel">
+			<div id="id_panel_toc" style="display:None;">
+				<div id="id_panel_label"><label id="id_res_chapter"></label><select id="id_chapter_select"></select></div>
+				<div id="id_toc_open_close"><a id="id_res_open_toc_all" href="#"></a><img src="../frame_images/pnl_vr.gif" /><a id="id_res_close_toc_all" href="#"></a></div>
+				<div id="id_toc"></div>
+				<div id="id_print_all"><a id="id_res_print_all" href="#"></a></div>
+			</div>
+			<div id="id_panel_search" style="display:None;">
+				<div id="id_panel_label"><label id="id_res_keyword" for="id_search"></label><input id="id_search" name="search" accesskey="k" onkeydown="return fncSearchKeyDown(event.keyCode, this.value);" /><button id="id_search_button"></button></div>
+				<div id="id_search_options_label"></div>
+				<div id="id_search_options" style="display:None;">
+					<div><input type="radio" name="search_options_search_scope" id="id_search_options_search_scope_all" /><label for="id_search_options_search_scope_all" id="id_res_search_options_search_scope_all"></label></div>
+					<div><input type="radio" name="search_options_search_scope" id="id_search_options_search_scope_chapter" /><label for="id_search_options_search_scope_chapter" id="id_res_search_options_search_scope_chapter"></label></div>
+					<div id="id_search_chapters"></div>
+					<div><input type="checkbox" id="id_search_options_case" /><label for="id_search_options_case" id="id_res_search_options_case"></label></div>
+					<div><input type="checkbox" id="id_search_options_multibyte" /><label for="id_search_options_multibyte" id="id_res_search_options_multibyte"></label></div>
+					<div id="id_search_options_bottom"><button id="id_res_search_button"></button></div>
+				</div>
+				<div id="id_search_results"></div>
+				<div id="id_search_status"></div>
+			</div>
+		</div>
+		<!--CONTENT_START-->
+		<div id="id_content">
+			<div class="h1"><a id="a0c615a7e77d5e4b3454b6b5c83eb557"></a>ネットワーク接続</div>
+			<div class="text">ネットワーク上にあるデバイスを自動検索して、ドライバーをインストールします。</div>
+			<div class="table_important">
+				<table class="table_important">
+					<thead class="table_important">
+						<tr class="table_important">
+							<td colspan="1" rowspan="1" class="col_0 row_0 table_important table_important_col_0 table_important_row_0">
+								<div class="text">重要</div>
+							</td>
+						</tr>
+					</thead>
+					<tbody class="table_important">
+						<tr class="table_important">
+							<td colspan="1" rowspan="1" class="col_0 row_1 table_important table_important_col_0 table_important_row_1">
+								<div class="list">コンピューターを起動した際に、必ずAdministratorsのメンバーとしてログオンしてください。</div>
+								<div class="list">お使いのコンピューターと同じサブネット内のデバイスのみ探索できます。</div>
+								<div class="list">本手順は、TCP/IPネットワーク環境でのみ実行できます。お使いのネットワーク環境がわからない場合は、ネットワーク管理者にご確認ください。</div>
+							</td>
+						</tr>
+					</tbody>
+				</table>
+			</div>
+			<div class="step_number">1.</div>
+			<div class="step_text">インストーラーを起動</div>
+			<div class="step_path"><a href="pr-inst_002b.html#afd4b121963d7dd7d7fd7173af4a02ad">ホームページから最新版ドライバーをダウンロードする場合（32bit版/64bit版）：</a></div>
+			<div class="step_path"><a href="pr-inst_002b.html#9ccbc87cf7dcf08176bdc613a71874e9">付属のCD-ROMを使用する場合：</a></div>
+			<div class="h5"><a id="afd4b121963d7dd7d7fd7173af4a02ad"></a>ホームページから最新版ドライバーをダウンロードする場合（32bit版/64bit版）：</div>
+			<div class="step_sub">キヤノンホームページ（http://canon.jp/）からSetup版ドライバーをダウンロード</div>
+			<div class="step_sub">ダウンロードしたファイルをダブルクリックして解凍 → 手順<a href="pr-inst_002b.html#88ed57e5ab3bf63271338d219554e263">2.</a>へ</div>
+			<div class="text">解凍してもインストーラーが自動的に起動しない場合には、［Setup.exe］をダブルクリック → 手順<a href="pr-inst_002b.html#88ed57e5ab3bf63271338d219554e263">2.</a>へ</div>
+			<div class="table_note">
+				<table class="table_note">
+					<thead class="table_note">
+						<tr class="table_note">
+							<td colspan="1" rowspan="1" class="col_0 row_0 table_note table_note_col_0 table_note_row_0">
+								<div class="text">メモ</div>
+							</td>
+						</tr>
+					</thead>
+					<tbody class="table_note">
+						<tr class="table_note">
+							<td colspan="1" rowspan="1" class="col_0 row_1 table_note table_note_col_0 table_note_row_1">
+								<div class="text">inf版をダウンロードした場合は、「<a href="pr-inst_003e.html#cb250f421b8d7e49d997d0ac0f860779">infファイルを使用してインストール</a>」を参照してください。</div>
+							</td>
+						</tr>
+					</tbody>
+				</table>
+			</div>
+			<div class="h5"><a id="9ccbc87cf7dcf08176bdc613a71874e9"></a>付属のCD-ROMを使用する場合：</div>
+			<div class="step_sub">CD-ROMをコンピューターにセット</div>
+			<div class="step_sub">［インストール］をクリック</div>
+			<div class="figure"><img src="./images/book_images/b_002b_s1_1_c.jpg" alt="" /></div>
+			<div class="step_sub">ドライバーを確認 → ［インストール］をクリック→手順<a href="pr-inst_002b.html#88ed57e5ab3bf63271338d219554e263">2.</a>へ</div>
+			<div class="figure"><img src="./images/book_images/pubnumbers/WGFv915_JP/b_002b_s1_2_c.jpg" alt="" /></div>
+			<div class="table_note">
+				<table class="table_note">
+					<thead class="table_note">
+						<tr class="table_note">
+							<td colspan="1" rowspan="1" class="col_0 row_0 table_note table_note_col_0 table_note_row_0">
+								<div class="text">メモ</div>
+							</td>
+						</tr>
+					</thead>
+					<tbody class="table_note">
+						<tr class="table_note">
+							<td colspan="1" rowspan="1" class="col_0 row_1 table_note table_note_col_0 table_note_row_1">
+								<div class="list">CD-ROMメニューが表示されない場合は、以下の手順を行ってください。</div>
+								<div class="text_level2">Windows 8/8.1/Server 2012/Server 2012 R2：</div>
+								<div class="dash">「タップして、このディスクに対して行う操作を選んでください。」メッセージが表示されたとき：このメッセージをタップ（またはクリック）し、[MInst.exeの実行]をタップ（またはクリック）</div>
+								<div class="dash">Windows のエクスプローラが表示されたとき：［MInst.exe］をダブルクリック</div>
+								<div class="dash">何も表示されないとき：デスクトップのエクスプローラーをクリックして、[コンピューター]のCDアイコンをダブルクリック</div>
+								<div class="text_level2">Windows Vista/Server 2008/7：</div>
+								<div class="dash">［自動再生］ダイアログボックスが表示されたとき：［MInst.exeの実行］をクリック</div>
+								<div class="dash">Windows のエクスプローラが表示されたとき：［MInst.exe］をダブルクリック</div>
+								<div class="dash">何も表示されないとき：［<img src="./images/book_images/b_start.gif" alt="" />］（スタート）－［コンピュータ］（または［コンピューター]）のCD-ROMアイコンをダブルクリック</div>
+								<div class="text_level2">Windows XP/Server 2003：</div>
+								<div class="dash">［マイコンピュータ］でCD-ROMアイコンをダブルクリック → ［MInst.exe］をダブルクリック</div>
+								<div class="list">上記の［MInst.exe］がない場合は、[Setup.exe]をダブルクリックしてください。</div>
+								<div class="dash">32bit版：32BIT\Setup.exe</div>
+								<div class="dash">64bit版：x64\Setup.exe</div>
+							</td>
+						</tr>
+					</tbody>
+				</table>
+			</div>
+			<div class="step_number"><a id="88ed57e5ab3bf63271338d219554e263"></a>2.</div>
+			<div class="step_text">使用許諾契約書の内容を確認 → ［はい］をクリック</div>
+			<div class="text">以下の画面が表示されたときは、［はい］または［いいえ］をクリックします。</div>
+			<div class="figure"><img src="./images/book_images/b_002b_s3_1_c.jpg" alt="" /></div>
+			<div class="text">［はい］：Canon Driver Information Assist Serviceに対するWindowsファイアウォールのブロックが解除され、デバイス情報取得や部門管理を行えるようになります。（→ <a href="pr-inst_003f.html#834f87293d4668671cc68df3bce4f2f9">Canon Driver Information Assist Serviceのインストール</a>）</div>
+			<div class="text">［いいえ］：Canon Driver Information Assist Serviceは使用できなくなります。</div>
+			<div class="step_number"><a id="59027f0aec6ce6e5e7b6ad6c507c60d2"></a>3.</div>
+			<div class="step_text">[Readmeファイルの表示]をクリック→内容を確認</div>
+			<div class="figure"><img src="./images/book_images/pubnumbers/WGFv915_JP/b_002b_s2_1_c.jpg" alt="" /></div>
+			<div class="step_number"><a id="6142a2363875b6649934a6a068adcd34"></a>4.</div>
+			<div class="step_text">[標準セットアップ]を選択→[次へ]をクリック</div>
+			<div class="figure"><img src="./images/book_images/pubnumbers/WGFv915_JP/b_002b_s4_1_c.jpg" alt="" /></div>
+			<div class="text">［スリープ状態のファクスも復帰させて探索する］：ネットワーク上にあるスリープ状態のデバイスも探索する場合に選択します。</div>
+			<div class="step_number">5.</div>
+			<div class="step_text">必要に応じて項目を選択 →［次へ］をクリック</div>
+			<div class="figure"><img src="./images/book_images/pubnumbers/WGFv915_JP/b_002b_s5_1_c.jpg" alt="" /></div>
+			<div class="text">［実行する処理］：すでにドライバーがインストールされている場合に表示されます。必要に応じて、既存のドライバーに対する処理を選択します。</div>
+			<div class="text">［Canon Driver Information Assist Service］：このサービスがインストールされていない場合に表示されます。共有プリンター環境で、デバイスの情報取得、および部門管理機能を使用するとき、プリントサーバーにこのサービスをインストールします。以下の画面が表示されたときは、［はい］または［いいえ］をクリックします。</div>
+			<div class="figure"><img src="./images/book_images/b_002b_s3_1_c.jpg" alt="" /></div>
+			<div class="text">［はい］：Canon Driver Information Assist Serviceに対するWindowsファイアウォールのブロックが解除され、デバイス情報取得や部門管理を行えるようになります。</div>
+			<div class="text">［いいえ］：Canon Driver Information Assist Serviceは使用できなくなります。</div>
+			<div class="step_number"><a id="ac52d24f11d3711e4737fda2d77a1fe4"></a>6.</div>
+			<div class="step_text">［ファクス一覧］からインストールするデバイスを選択</div>
+			<div class="figure"><img src="./images/book_images/pubnumbers/WGFv915_JP/b_002b_s6_1_c.jpg" alt="" /></div>
+			<div class="text">Windows Vista/Server 2008/7/8/8.1/Server 2012/Server 2012 R2をお使いの場合、［IPv4デバイス］/［IPv6デバイス］タブをクリックして、表示を切り替えることができます。</div>
+			<div class="text">［ファクス一覧］にデバイスーが表示されない場合は、［再探索］をクリックします。</div>
+			<div class="text">［再探索］をクリックしてもデバイスが探索されない場合は、「<a href="pr-inst_003a.html#f07f3aa24ee4935a2df842e2363869b5">ポートを設定してインストール</a>」を参照してインストールしてください。</div>
+			<div class="step_number">7.</div>
+			<div class="step_text">デバイス名を変更する場合や、通常使うデバイスとして設定する場合は、［ファクス情報を設定する］を選択 → ［次へ］をクリック</div>
+			<div class="figure"><img src="./images/book_images/pubnumbers/WGFv915_JP/b_002b_s8_1_c.jpg" alt="" /></div>
+			<div class="text">上記を設定しない場合は、［次へ］をクリックし、手順<a href="pr-inst_002b.html#fd126a69618e4bb732cb16dc1b6d302e">9.</a>に進みます。</div>
+			<div class="step_number">8.</div>
+			<div class="step_text">必要に応じて［ファクス名］を変更 → 通常使うデバイスとして設定する場合は、［通常のプリンターとして使う］を選択 → ［次へ］をクリック</div>
+			<div class="figure"><img src="./images/book_images/pubnumbers/WGFv915_JP/b_002b_s9_1_c.jpg" alt="" /></div>
+			<div class="text">デバイスを共有設定する場合は、［ファクスを共有する］を選択します。（→<a href="pr-inst_003ca.html#83661d7dd9fdca74b4cb79eceab70d0d">プリントサーバーの設定</a>）</div>
+			<div class="step_number"><a id="fd126a69618e4bb732cb16dc1b6d302e"></a>9.</div>
+			<div class="step_text">［インストールするファクス一覧］を確認 → ［開始］をクリック</div>
+			<div class="figure"><img src="./images/book_images/pubnumbers/WGFv915_JP/b_002b_s10_1_c.jpg" alt="" /></div>
+			<div class="text">以下の画面が表示されたときは、[次へ]をクリック</div>
+			<div class="figure"><img src="./images/book_images/pubnumbers/WGFv915_JP/b_002b_s10_2_c.jpg" alt="" /></div>
+			<div class="step_number"><a id="d9d1873e74e4b4c01932db48ebc310f0"></a>10.</div>
+			<div class="step_text">［再起動］（または［終了］）をクリック</div>
+			<div class="text">Windowsコントールパネルの［デバイスとプリンター］（または［プリンタとFAX］/[プリンタ]）に、インストールしたデバイスが表示されます。</div>
+			<div class="text">以上でインストールの作業が終了しました。</div>
+			<div class="link_to_upper"></div>
+		</div>
+		<!--CONTENT_END-->
+		<div id="id_footer"><table cellpadding="0" cellspacing="0"><tr><th><span id="id_res_copy_right"></span></th><td id="id_footer_include"></td></tr></table></div>
+		<div id="id_breadcrumbs"><a href="../frame_htmls/home.html" id="id_res_home"></a> » <a href="pr-inst_002_ex.html" id="id_level_1" toc_id="pr-inst_002_ex" title="標準インストール" >標準インストール</a> » <a id="id_level_2" toc_id="pr-inst_002b" title="ネットワーク接続" >ネットワーク接続</a></div>
+	</body>
+</html>
