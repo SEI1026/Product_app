@@ -1,8 +1,0 @@
-<?xml version="1.0" encoding="utf-8" ?> 
-<dataBase>
-		<name>HanbaiImpel</name>
-		<provider>SQLServer</provider>
-		<dataSource>express5800\sqlexpress,1433</dataSource>
-		<persistSecurityInfo>False</persistSecurityInfo>
-		<catalog>Taiho</catalog>
-</dataBase>

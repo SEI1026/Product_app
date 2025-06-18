@@ -2225,6 +2225,15 @@ def simple_auto_update(parent, download_url, new_version):
                 logging.info(f"🚀 起動コマンド: {abs_exe}")
                 logging.info(f"🚀 作業ディレクトリ: {abs_cwd}")
                 
+                # アプリケーションロックを解放
+                from ..utils.file_lock_manager import FileLockManager
+                lock_manager = FileLockManager()
+                lock_manager.release_app_lock()
+                logging.info("🔓 アプリケーションロックを解放しました")
+                
+                # 少し待ってロックファイルが確実に削除されるようにする
+                time.sleep(0.5)
+                
                 # 新しいプロセスをバックグラウンドで起動
                 subprocess.Popen([abs_exe], 
                                cwd=abs_cwd,
